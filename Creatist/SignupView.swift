@@ -97,7 +97,7 @@ struct SignupView: View {
         }
         isLoading = true
         Task {
-            var user = User(name: firstName + " " + lastName, email: email, password: password)
+            let user = User(id: UUID(), name: firstName + " " + lastName, email: email, password: password)
             let success = await Creatist.shared.signup(user)
             if success {
                 let otpSent = await Creatist.shared.requestOTP()

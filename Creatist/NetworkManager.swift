@@ -96,4 +96,22 @@ actor NetworkManager {
             return nil
         }
     }
+
+    func patch(url: String, body: Data?) async -> Response? {
+        guard let url = URL(string: endpoint + url) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = KeychainHelper.get("accessToken") {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            return try? JSONDecoder().decode(Response.self, from: data)
+        } catch {
+            print("PATCH error: \(error)")
+            return nil
+        }
+    }
 } 

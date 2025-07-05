@@ -39,6 +39,27 @@ enum WorkMode: String, Codable, CaseIterable, Sendable {
     case onlineOnsite = "OnsiteOnline"
 }
 
+// MARK: - Location Model
+
+struct Location: Codable, Sendable {
+    var latitude: Double
+    var longitude: Double
+    
+    func distance(to other: Location) -> Double {
+        let lat1 = latitude * .pi / 180
+        let lat2 = other.latitude * .pi / 180
+        let deltaLat = (other.latitude - latitude) * .pi / 180
+        let deltaLon = (other.longitude - longitude) * .pi / 180
+        
+        let a = sin(deltaLat/2) * sin(deltaLat/2) +
+                cos(lat1) * cos(lat2) *
+                sin(deltaLon/2) * sin(deltaLon/2)
+        let c = 2 * atan2(sqrt(a), sqrt(1-a))
+        
+        return 6371 * c // Earth's radius in km
+    }
+}
+
 // MARK: - User Model
 
 struct User: Codable, Sendable {
@@ -51,6 +72,8 @@ struct User: Codable, Sendable {
     var genres: [UserGenre]?
     var paymentMode: PaymentMode?
     var workMode: WorkMode?
+    var location: Location?
+    var rating: Double?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -62,10 +85,19 @@ struct User: Codable, Sendable {
         case genres
         case paymentMode = "payment_mode"
         case workMode = "work_mode"
+        case location
+        case rating
     }
     
     func toData() -> Data? {
         try? JSONEncoder().encode(self)
+    }
+    
+    func distance(to other: User) -> Double {
+        guard let myLocation = location, let otherLocation = other.location else {
+            return Double.infinity // Return infinity if location is missing
+        }
+        return myLocation.distance(to: otherLocation)
     }
 }
 

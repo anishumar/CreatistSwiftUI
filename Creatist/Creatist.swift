@@ -102,4 +102,11 @@ class Creatist {
         print("Fetched users for genre: \(genre.rawValue): nil")
         return []
     }
+    
+    func updateUserLocation(latitude: Double, longitude: Double) async -> Bool {
+        let location = Location(latitude: latitude, longitude: longitude)
+        guard let data = try? JSONEncoder().encode(location) else { return false }
+        let response: Response? = await NetworkManager.shared.patch(url: "/v1/users/location", body: data)
+        return response?.message == "success"
+    }
 }
