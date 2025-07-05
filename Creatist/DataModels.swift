@@ -94,7 +94,7 @@ struct User: Codable, Sendable {
         case city
         case country
         case distance
-        case isFollowing
+        case isFollowing = "is_following"
     }
     
     func toData() -> Data? {
@@ -121,7 +121,10 @@ struct Credential: Codable {
 
 struct LoginResponse: Codable {
     let message: String
-    let token: String?
+    let access_token: String?
+    let refresh_token: String?
+    let token_type: String?
+    let expires_in: Int?
 }
 
 struct Response: Codable {

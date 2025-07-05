@@ -19,10 +19,13 @@ class Creatist {
     
     func login(email: String, password: String) async -> Bool {
         let loginResponse: LoginResponse? = await _login(email: email, password: password)
-        if loginResponse?.message == "success", let token = loginResponse?.token {
+        if loginResponse?.message == "success",
+           let accessToken = loginResponse?.access_token,
+           let refreshToken = loginResponse?.refresh_token {
             KeychainHelper.set(email, forKey: "email")
             KeychainHelper.set(password, forKey: "password")
-            KeychainHelper.set(token, forKey: "accessToken")
+            KeychainHelper.set(accessToken, forKey: "accessToken")
+            KeychainHelper.set(refreshToken, forKey: "refreshToken")
             await self.fetch()
             return true
         }
