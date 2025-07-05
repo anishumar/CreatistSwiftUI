@@ -125,4 +125,14 @@ class Creatist {
         }
         return []
     }
+    
+    func followUser(userId: String) async -> Bool {
+        let response: Response? = await NetworkManager.shared.put(url: "/v1/follow/\(userId)", body: nil)
+        return response?.message == "success"
+    }
+    
+    func unfollowUser(userId: String) async -> Bool {
+        let success = await NetworkManager.shared.delete(url: "/v1/unfollow/\(userId)", body: nil)
+        return success
+    }
 }

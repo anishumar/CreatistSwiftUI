@@ -77,6 +77,7 @@ struct User: Codable, Sendable {
     var city: String?
     var country: String?
     var distance: Double?
+    var isFollowing: Bool?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -93,6 +94,7 @@ struct User: Codable, Sendable {
         case city
         case country
         case distance
+        case isFollowing
     }
     
     func toData() -> Data? {
