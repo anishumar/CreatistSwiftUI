@@ -138,4 +138,24 @@ class Creatist {
         let success = await NetworkManager.shared.delete(url: "/v1/unfollow/\(userId)", body: nil)
         return success
     }
+    
+    // Fetch followers count for any user
+    func fetchFollowersCount(for userId: String) async -> Int {
+        struct FollowersResponse: Codable { let message: String; let followers: [User] }
+        let url = "/v1/followers/\(userId)"
+        if let response: FollowersResponse = await NetworkManager.shared.get(url: url) {
+            return response.followers.count
+        }
+        return 0
+    }
+    
+    // Fetch following count for any user
+    func fetchFollowingCount(for userId: String) async -> Int {
+        struct FollowingResponse: Codable { let message: String; let following: [User] }
+        let url = "/v1/following/\(userId)"
+        if let response: FollowingResponse = await NetworkManager.shared.get(url: url) {
+            return response.following.count
+        }
+        return 0
+    }
 }

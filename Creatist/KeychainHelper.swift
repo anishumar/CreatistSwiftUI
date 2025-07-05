@@ -50,4 +50,13 @@ enum KeychainHelper {
         ]
         return SecItemDelete(query as CFDictionary) == errSecSuccess
     }
+
+    // Helper to clear all old and new token keys
+    public static func clearAllTokens() {
+        _ = remove("token")           // Old format
+        _ = remove("accessToken")     // Current format
+        _ = remove("refreshToken")    // Current format
+        _ = remove("access_token")    // Some APIs use snake_case
+        _ = remove("refresh_token")   // Some APIs use snake_case
+    }
 } 

@@ -5,6 +5,7 @@ struct TopNearbyView: View {
     @StateObject var viewModel = UserListViewModel()
     @State private var showSeeAllTopRated = false
     @State private var showSeeAllNearby = false
+    @State private var selectedUserId: UUID? = nil
 
     var body: some View {
         ScrollView {
@@ -21,6 +22,9 @@ struct TopNearbyView: View {
                             HStack(spacing: 16) {
                                 ForEach(viewModel.topRatedUsers, id: \ .id) { user in
                                     UserCard(userId: user.id, viewModel: viewModel)
+                                        .onTapGesture {
+                                            selectedUserId = user.id
+                                        }
                                 }
                             }
                             .padding(.horizontal)
@@ -34,6 +38,9 @@ struct TopNearbyView: View {
                             HStack(spacing: 16) {
                                 ForEach(viewModel.nearbyUsers, id: \ .id) { user in
                                     UserCard(userId: user.id, viewModel: viewModel)
+                                        .onTapGesture {
+                                            selectedUserId = user.id
+                                        }
                                 }
                             }
                             .padding(.horizontal)
@@ -48,7 +55,7 @@ struct TopNearbyView: View {
             }
             .padding(.vertical)
         }
-        .navigationTitle("\(genre.rawValue.capitalized) Artists")
+        .navigationTitle("\(genre.rawValue.capitalized)")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.fetchUsers(for: genre)
@@ -63,6 +70,9 @@ struct TopNearbyView: View {
         }
         .navigationDestination(isPresented: $showSeeAllNearby) {
             SeeAllArtistsView(title: "Nearby", users: viewModel.nearbyUsers, viewModel: viewModel)
+        }
+        .navigationDestination(item: $selectedUserId) { userId in
+            UserProfileView(userId: userId, viewModel: viewModel)
         }
     }
 }

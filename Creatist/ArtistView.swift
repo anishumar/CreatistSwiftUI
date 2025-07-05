@@ -4,11 +4,15 @@ struct SeeAllArtistsView: View {
     let title: String
     let users: [User]
     @ObservedObject var viewModel: UserListViewModel
+    @State private var selectedUserId: UUID? = nil
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 ForEach(users, id: \.id) { user in
-                    ExpandedUserCard(userId: user.id, viewModel: viewModel)
+                    NavigationLink(destination: UserProfileView(userId: user.id, viewModel: viewModel), tag: user.id, selection: $selectedUserId) {
+                        ExpandedUserCard(userId: user.id, viewModel: viewModel)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
             .padding(.vertical)
