@@ -109,4 +109,20 @@ class Creatist {
         let response: Response? = await NetworkManager.shared.patch(url: "/v1/users/location", body: data)
         return response?.message == "success"
     }
+    
+    func fetchTopRatedUsers(for genre: UserGenre) async -> [User] {
+        let url = "/v1/browse/top-rated/\(genre.rawValue)"
+        if let response: ArtistsResponse = await NetworkManager.shared.get(url: url) {
+            return response.artists
+        }
+        return []
+    }
+
+    func fetchNearbyUsers(for genre: UserGenre) async -> [User] {
+        let url = "/v1/browse/near-by-artist/\(genre.rawValue)"
+        if let response: ArtistsResponse = await NetworkManager.shared.get(url: url) {
+            return response.artists
+        }
+        return []
+    }
 }

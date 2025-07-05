@@ -74,6 +74,9 @@ struct User: Codable, Sendable {
     var workMode: WorkMode?
     var location: Location?
     var rating: Double?
+    var city: String?
+    var country: String?
+    var distance: Double?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -87,6 +90,9 @@ struct User: Codable, Sendable {
         case workMode = "work_mode"
         case location
         case rating
+        case city
+        case country
+        case distance
     }
     
     func toData() -> Data? {
@@ -196,4 +202,8 @@ struct OTPRequest: Codable, Sendable {
 struct UsersResponse: Codable {
     let users: [User]?
     let message: String?
+}
+
+struct ArtistsResponse: Codable {
+    let artists: [User]
 } 

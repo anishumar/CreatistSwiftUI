@@ -37,7 +37,7 @@ struct DiscoverView: View {
                 NavigationLink(
                     destination: Group {
                         if let genre = selectedGenre {
-                            UserListView(genre: genre)
+                            TopNearbyView(genre: genre)
                         }
                     },
                     isActive: Binding(
