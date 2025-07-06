@@ -73,71 +73,73 @@ struct ExpandedUserCard: View {
                     Spacer()
                     FollowButton(userId: user.id, viewModel: viewModel)
                 }
-                if let distance = user.distance {
-                    HStack(spacing: 4) {
-                        Image(systemName: "location")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                        Text(String(format: "%.1f km away", distance))
-                            .font(.caption)
-                            .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 6) {
+                    if let city = user.city {
+                        HStack {
+                            Image(systemName: "location")
+                                .foregroundColor(.blue)
+                                .font(.caption)
+                            Text(city)
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                        }
                     }
-                }
-                if let city = user.city, let country = user.country {
-                    HStack(spacing: 4) {
-                        Image(systemName: "location.fill")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                        Text("\(city), \(country)")
-                            .font(.caption)
-                            .foregroundColor(.blue)
+                    if let workMode = user.workMode {
+                        HStack {
+                            Image(systemName: "globe")
+                                .foregroundColor(.purple)
+                                .font(.caption)
+                            Text(workMode.rawValue)
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                        }
                     }
-                } else if let city = user.city {
-                    HStack(spacing: 4) {
-                        Image(systemName: "location.fill")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                        Text(city)
-                            .font(.caption)
-                            .foregroundColor(.blue)
+                    if let paymentMode = user.paymentMode {
+                        HStack {
+                            Image(systemName: paymentMode == .paid ? "creditcard.fill" : "gift.fill")
+                                .foregroundColor(paymentMode == .paid ? .green : .orange)
+                                .font(.caption)
+                            Text(paymentMode.rawValue.capitalized)
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                        }
                     }
-                }
-                if let workMode = user.workMode {
-                    HStack(spacing: 4) {
-                        Image(systemName: "globe")
-                            .foregroundColor(.purple)
-                            .font(.caption)
-                        Text(workMode.rawValue)
-                            .font(.caption)
-                            .foregroundColor(.purple)
-                    }
-                }
-                if let paymentMode = user.paymentMode {
-                    HStack(spacing: 4) {
-                        Image(systemName: paymentMode == .paid ? "creditcard.fill" : "gift.fill")
-                            .foregroundColor(paymentMode == .paid ? .green : .orange)
-                            .font(.caption)
-                        Text(paymentMode.rawValue.capitalized)
-                            .font(.caption)
-                            .foregroundColor(paymentMode == .paid ? .green : .orange)
-                    }
-                }
-                if let genres = user.genres, !genres.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "music.note.list")
-                            .foregroundColor(.pink)
-                            .font(.caption)
-                        Text(genres.map { $0.rawValue }.joined(separator: ", "))
-                            .font(.caption)
-                            .foregroundColor(.pink)
+                    if let genres = user.genres, !genres.isEmpty {
+                        HStack {
+                            Image(systemName: "music.note.list")
+                                .foregroundColor(.pink)
+                                .font(.caption)
+                            Text(genres.map { $0.rawValue }.joined(separator: ", "))
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                        }
                     }
                 }
             }
             .padding()
-            .frame(maxWidth: .infinity)
-            .background(Color(.secondarySystemBackground))
-            .cornerRadius(20)
-            .shadow(radius: 4)
+            .frame(width: 363, height: 220)
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(.regularMaterial)
+                    // White gradient shine at the top
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.white.opacity(0.25), Color.white.opacity(0.05), .clear]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .allowsHitTesting(false)
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(Color.white.opacity(0.28), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 4)
             .padding(.horizontal)
         }
     }

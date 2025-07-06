@@ -36,12 +36,12 @@ struct FollowButton: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background((user.isFollowing ?? false) ? Color.red.opacity(0.1) : Color.blue.opacity(0.1))
-                .foregroundColor((user.isFollowing ?? false) ? .red : .blue)
+                .background((user.isFollowing ?? false) ? Color.gray.opacity(0.13) : Color.blue.opacity(0.1))
+                .foregroundColor((user.isFollowing ?? false) ? .gray : .blue)
                 .cornerRadius(16)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke((user.isFollowing ?? false) ? Color.red.opacity(0.3) : Color.blue.opacity(0.3), lineWidth: 1)
+                        .stroke((user.isFollowing ?? false) ? Color.gray.opacity(0.32) : Color.blue.opacity(0.3), lineWidth: 1)
                 )
             }
             .disabled(isLoading)
