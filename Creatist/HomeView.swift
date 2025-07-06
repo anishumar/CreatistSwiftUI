@@ -24,12 +24,6 @@ struct HomeView: View {
     }
 }
 
-struct VisionBoardView: View {
-    var body: some View {
-        Text("VisionBoard")
-    }
-}
-
 struct FeedView: View {
     var body: some View {
         Text("Feed")

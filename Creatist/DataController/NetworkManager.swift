@@ -29,11 +29,35 @@ actor NetworkManager {
 
     // MARK: Internal
     func get<T: Codable>(url: String, queryParameters: [String: Any]? = nil) async -> T? {
-        return await request(url: url, method: "GET", queryParameters: queryParameters)
+        print("🌐 NetworkManager: GET \(url)")
+        if let queryParameters = queryParameters {
+            print("🌐 NetworkManager: Query parameters: \(queryParameters)")
+        }
+        
+        let result: T? = await request(url: url, method: "GET", queryParameters: queryParameters)
+        
+        if let result = result {
+            print("🌐 NetworkManager: GET \(url) - SUCCESS")
+        } else {
+            print("🌐 NetworkManager: GET \(url) - FAILED")
+        }
+        
+        return result
     }
 
     func post<T: Codable>(url: String, body: Data?) async -> T? {
-        return await request(url: url, method: "POST", body: body)
+        print("🌐 NetworkManager: POST \(url)")
+        print("🌐 NetworkManager: Body: \(String(data: body ?? Data(), encoding: .utf8) ?? "nil")")
+        
+        let result: T? = await request(url: url, method: "POST", body: body)
+        
+        if let result = result {
+            print("🌐 NetworkManager: POST \(url) - SUCCESS")
+        } else {
+            print("🌐 NetworkManager: POST \(url) - FAILED")
+        }
+        
+        return result
     }
 
     func put<T: Codable>(url: String, body: Data?) async -> T? {
@@ -92,6 +116,17 @@ actor NetworkManager {
             }
 
             logger.debug("Response fetched, url=\(url, privacy: .public), status=\(response.statusCode, privacy: .public)")
+            print("🌐 NetworkManager: Response status: \(response.statusCode)")
+            print("🌐 NetworkManager: Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
+            
+            // Add specific logging for vision board users endpoint
+            let urlString = url.absoluteString
+            if urlString.contains("/visionboard/") && urlString.contains("/users") {
+                print("🔍 VISION BOARD USERS RESPONSE:")
+                print("   URL: \(url)")
+                print("   Status: \(response.statusCode)")
+                print("   Data: \(String(data: data, encoding: .utf8) ?? "nil")")
+            }
 
             if response.statusCode == 401 && retryOn401 {
                 // Try to refresh token
@@ -113,7 +148,39 @@ actor NetworkManager {
             }
 
             let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
+            
+            // Try multiple date decoding strategies
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+            
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let dateString = try container.decode(String.self)
+                
+                // Try ISO8601 first
+                if let date = ISO8601DateFormatter().date(from: dateString) {
+                    return date
+                }
+                
+                // Try with milliseconds
+                if let date = dateFormatter.date(from: dateString) {
+                    return date
+                }
+                
+                // Try without milliseconds
+                dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+                if let date = dateFormatter.date(from: dateString) {
+                    return date
+                }
+                
+                // Try just date
+                dateFormatter.dateFormat = "yyyy-MM-dd"
+                if let date = dateFormatter.date(from: dateString) {
+                    return date
+                }
+                
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Date string does not match expected format: \(dateString)")
+            }
 
             return try decoder.decode(T.self, from: data)
 

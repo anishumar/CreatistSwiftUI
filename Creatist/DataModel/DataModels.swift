@@ -7,7 +7,7 @@ enum MediaType: String, Codable, CaseIterable, Sendable {
     case video = "video"
 }
 
-enum UserGenre: String, Codable, CaseIterable, Sendable {
+enum UserGenre: String, Codable, CaseIterable, Sendable, Identifiable {
     case videographer = "videographer"
     case photographer = "photographer"
     case vocalist = "vocalist"
@@ -26,6 +26,7 @@ enum UserGenre: String, Codable, CaseIterable, Sendable {
     case violinist = "violinist"
     case flutist = "flutist"
     case percussionist = "percussionist"
+    var id: String { self.rawValue }
 }
 
 enum PaymentMode: String, Codable, CaseIterable, Sendable {
@@ -37,6 +38,58 @@ enum WorkMode: String, Codable, CaseIterable, Sendable {
     case online = "Online"
     case onsite = "Onsite"
     case onlineOnsite = "OnsiteOnline"
+}
+
+// MARK: - Vision Board & Related Models
+
+enum VisionBoardStatus: String, CaseIterable, Codable {
+    case draft = "Draft"
+    case active = "Active"
+    case completed = "Completed"
+    case cancelled = "Cancelled"
+}
+
+enum AssignmentStatus: String, CaseIterable, Codable {
+    case pending = "Pending"
+    case accepted = "Accepted"
+    case rejected = "Rejected"
+    case removed = "Removed"
+}
+
+enum WorkType: String, CaseIterable, Codable {
+    case online = "Online"
+    case offline = "Offline"
+}
+
+enum PaymentType: String, CaseIterable, Codable {
+    case paid = "Paid"
+    case unpaid = "Unpaid"
+}
+
+enum TaskPriority: String, CaseIterable, Codable {
+    case low = "Low"
+    case medium = "Medium"
+    case high = "High"
+    case critical = "Critical"
+}
+
+enum TaskStatus: String, CaseIterable, Codable {
+    case notStarted = "Not Started"
+    case inProgress = "In Progress"
+    case completed = "Completed"
+    case blocked = "Blocked"
+}
+
+enum EquipmentStatus: String, CaseIterable, Codable {
+    case required = "Required"
+    case confirmed = "Confirmed"
+    case notAvailable = "Not Available"
+}
+
+enum DependencyType: String, CaseIterable, Codable {
+    case finishToStart = "Finish-to-Start"
+    case startToStart = "Start-to-Start"
+    case finishToFinish = "Finish-to-Finish"
 }
 
 // MARK: - Location Model
@@ -167,31 +220,6 @@ struct CommentUpvote: Codable, Sendable {
     var comment_id: UUID
 }
 
-// MARK: - Vision Board Models
-
-struct VisionBoard: Codable, Sendable {
-    var id: UUID
-    var owner_id: UUID
-    var name: String
-    var description: String
-    var start_date: Date
-    var end_date: Date
-}
-
-struct VisionBoardRole: Codable, Sendable {
-    var visionboard_id: UUID
-    var role: UserGenre
-    var user_id: UUID
-}
-
-struct VisionBoardTask: Codable, Sendable {
-    var user_id: UUID
-    var visionboard_id: UUID
-    var title: String
-    var start_date: Date
-    var end_date: Date
-}
-
 // MARK: - Follower Model
 
 struct Follower: Codable, Sendable {
@@ -211,4 +239,901 @@ struct UsersResponse: Codable {
 
 struct ArtistsResponse: Codable {
     let artists: [User]
+}
+
+struct VisionBoardsResponse: Codable {
+    let message: String
+    let visionboards: [VisionBoard]
+}
+
+struct VisionBoardUsersResponse: Codable {
+    let message: String
+    let users: [User]
+}
+
+// MARK: - Vision Board & Related Models
+
+struct VisionBoard: Codable, Identifiable {
+    let id: UUID
+    let name: String
+    let description: String?
+    let startDate: Date
+    let endDate: Date
+    let status: VisionBoardStatus
+    let createdAt: Date
+    let updatedAt: Date
+    let createdBy: UUID
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case startDate = "start_date"
+        case endDate = "end_date"
+        case status
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case createdBy = "created_by"
+    }
+}
+
+struct VisionBoardCreate: Codable {
+    let name: String
+    let description: String?
+    let startDate: Date
+    let endDate: Date
+    let status: VisionBoardStatus
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case startDate = "start_date"
+        case endDate = "end_date"
+        case status
+    }
+    
+    init(name: String, description: String? = nil, startDate: Date, endDate: Date, status: VisionBoardStatus = .draft) {
+        self.name = name
+        self.description = description
+        self.startDate = startDate
+        self.endDate = endDate
+        self.status = status
+    }
+}
+
+struct VisionBoardUpdate: Codable {
+    let name: String?
+    let description: String?
+    let startDate: Date?
+    let endDate: Date?
+    let status: VisionBoardStatus?
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case startDate = "start_date"
+        case endDate = "end_date"
+        case status
+    }
+    
+    init(name: String? = nil, description: String? = nil, startDate: Date? = nil, endDate: Date? = nil, status: VisionBoardStatus? = nil) {
+        self.name = name
+        self.description = description
+        self.startDate = startDate
+        self.endDate = endDate
+        self.status = status
+    }
+}
+
+struct Genre: Codable, Identifiable {
+    let id: UUID
+    let visionboardId: UUID
+    let name: String
+    let description: String?
+    let minRequiredPeople: Int
+    let maxAllowedPeople: Int?
+    let createdAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case visionboardId = "visionboard_id"
+        case name
+        case description
+        case minRequiredPeople = "min_required_people"
+        case maxAllowedPeople = "max_allowed_people"
+        case createdAt = "created_at"
+    }
+}
+
+struct GenreCreate: Codable {
+    let name: String
+    let description: String?
+    let minRequiredPeople: Int
+    let maxAllowedPeople: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case minRequiredPeople = "min_required_people"
+        case maxAllowedPeople = "max_allowed_people"
+    }
+    
+    init(name: String, description: String? = nil, minRequiredPeople: Int = 1, maxAllowedPeople: Int? = nil) {
+        self.name = name
+        self.description = description
+        self.minRequiredPeople = minRequiredPeople
+        self.maxAllowedPeople = maxAllowedPeople
+    }
+}
+
+struct GenreUpdate: Codable {
+    let name: String?
+    let description: String?
+    let minRequiredPeople: Int?
+    let maxAllowedPeople: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case minRequiredPeople = "min_required_people"
+        case maxAllowedPeople = "max_allowed_people"
+    }
+    
+    init(name: String? = nil, description: String? = nil, minRequiredPeople: Int? = nil, maxAllowedPeople: Int? = nil) {
+        self.name = name
+        self.description = description
+        self.minRequiredPeople = minRequiredPeople
+        self.maxAllowedPeople = maxAllowedPeople
+    }
+}
+
+struct Equipment: Codable, Identifiable {
+    let id: UUID
+    let name: String
+    let description: String?
+    let category: String
+    let brand: String?
+    let model: String?
+    let specifications: [String: AnyCodable]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case category
+        case brand
+        case model
+        case specifications
+    }
+}
+
+struct EquipmentCreate: Codable {
+    let name: String
+    let description: String?
+    let category: String
+    let brand: String?
+    let model: String?
+    let specifications: [String: AnyCodable]?
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case category
+        case brand
+        case model
+        case specifications
+    }
+    
+    init(name: String, description: String? = nil, category: String, brand: String? = nil, model: String? = nil, specifications: [String: AnyCodable]? = nil) {
+        self.name = name
+        self.description = description
+        self.category = category
+        self.brand = brand
+        self.model = model
+        self.specifications = specifications
+    }
+}
+
+struct EquipmentUpdate: Codable {
+    let name: String?
+    let description: String?
+    let category: String?
+    let brand: String?
+    let model: String?
+    let specifications: [String: AnyCodable]?
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case category
+        case brand
+        case model
+        case specifications
+    }
+    
+    init(name: String? = nil, description: String? = nil, category: String? = nil, brand: String? = nil, model: String? = nil, specifications: [String: AnyCodable]? = nil) {
+        self.name = name
+        self.description = description
+        self.category = category
+        self.brand = brand
+        self.model = model
+        self.specifications = specifications
+    }
+}
+
+struct GenreAssignment: Codable, Identifiable {
+    let id: UUID
+    let genreId: UUID
+    let userId: UUID
+    let status: AssignmentStatus
+    let workType: WorkType
+    let paymentType: PaymentType
+    let paymentAmount: Decimal?
+    let currency: String?
+    let invitedAt: Date
+    let respondedAt: Date?
+    let assignedBy: UUID
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case genreId = "genre_id"
+        case userId = "user_id"
+        case status
+        case workType = "work_type"
+        case paymentType = "payment_type"
+        case paymentAmount = "payment_amount"
+        case currency
+        case invitedAt = "invited_at"
+        case respondedAt = "responded_at"
+        case assignedBy = "assigned_by"
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(UUID.self, forKey: .id)
+        genreId = try container.decode(UUID.self, forKey: .genreId)
+        userId = try container.decode(UUID.self, forKey: .userId)
+        status = try container.decode(AssignmentStatus.self, forKey: .status)
+        workType = try container.decode(WorkType.self, forKey: .workType)
+        paymentType = try container.decode(PaymentType.self, forKey: .paymentType)
+        currency = try container.decodeIfPresent(String.self, forKey: .currency)
+        invitedAt = try container.decode(Date.self, forKey: .invitedAt)
+        respondedAt = try container.decodeIfPresent(Date.self, forKey: .respondedAt)
+        assignedBy = try container.decode(UUID.self, forKey: .assignedBy)
+        
+        // Handle payment_amount as either string or decimal
+        if let paymentAmountString = try container.decodeIfPresent(String.self, forKey: .paymentAmount) {
+            paymentAmount = Decimal(string: paymentAmountString)
+        } else if let paymentAmountDecimal = try container.decodeIfPresent(Decimal.self, forKey: .paymentAmount) {
+            paymentAmount = paymentAmountDecimal
+        } else {
+            paymentAmount = nil
+        }
+    }
+}
+
+struct GenreAssignmentCreate: Codable {
+    let genreId: UUID
+    let userId: UUID
+    let workType: WorkType
+    let paymentType: PaymentType
+    let paymentAmount: Decimal?
+    let currency: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case genreId = "genre_id"
+        case userId = "user_id"
+        case workType = "work_type"
+        case paymentType = "payment_type"
+        case paymentAmount = "payment_amount"
+        case currency
+    }
+    
+    init(genreId: UUID, userId: UUID, workType: WorkType, paymentType: PaymentType, paymentAmount: Decimal? = nil, currency: String? = nil) {
+        self.genreId = genreId
+        self.userId = userId
+        self.workType = workType
+        self.paymentType = paymentType
+        self.paymentAmount = paymentAmount
+        self.currency = currency
+    }
+}
+
+struct GenreAssignmentUpdate: Codable {
+    let status: AssignmentStatus?
+    let workType: WorkType?
+    let paymentType: PaymentType?
+    let paymentAmount: Decimal?
+    let currency: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case status
+        case workType = "work_type"
+        case paymentType = "payment_type"
+        case paymentAmount = "payment_amount"
+        case currency
+    }
+    
+    init(status: AssignmentStatus? = nil, workType: WorkType? = nil, paymentType: PaymentType? = nil, paymentAmount: Decimal? = nil, currency: String? = nil) {
+        self.status = status
+        self.workType = workType
+        self.paymentType = paymentType
+        self.paymentAmount = paymentAmount
+        self.currency = currency
+    }
+}
+
+struct RequiredEquipment: Codable, Identifiable {
+    let id: UUID
+    let genreAssignmentId: UUID
+    let equipmentId: UUID
+    let quantity: Int
+    let isProvidedByAssignee: Bool
+    let notes: String?
+    let status: EquipmentStatus
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case genreAssignmentId = "genre_assignment_id"
+        case equipmentId = "equipment_id"
+        case quantity
+        case isProvidedByAssignee = "is_provided_by_assignee"
+        case notes
+        case status
+    }
+}
+
+struct RequiredEquipmentCreate: Codable {
+    let equipmentId: UUID
+    let quantity: Int
+    let isProvidedByAssignee: Bool
+    let notes: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case equipmentId = "equipment_id"
+        case quantity
+        case isProvidedByAssignee = "is_provided_by_assignee"
+        case notes
+    }
+    
+    init(equipmentId: UUID, quantity: Int = 1, isProvidedByAssignee: Bool = false, notes: String? = nil) {
+        self.equipmentId = equipmentId
+        self.quantity = quantity
+        self.isProvidedByAssignee = isProvidedByAssignee
+        self.notes = notes
+    }
+}
+
+struct RequiredEquipmentUpdate: Codable {
+    let quantity: Int?
+    let isProvidedByAssignee: Bool?
+    let notes: String?
+    let status: EquipmentStatus?
+    
+    enum CodingKeys: String, CodingKey {
+        case quantity
+        case isProvidedByAssignee = "is_provided_by_assignee"
+        case notes
+        case status
+    }
+    
+    init(quantity: Int? = nil, isProvidedByAssignee: Bool? = nil, notes: String? = nil, status: EquipmentStatus? = nil) {
+        self.quantity = quantity
+        self.isProvidedByAssignee = isProvidedByAssignee
+        self.notes = notes
+        self.status = status
+    }
+}
+
+struct VisionBoardTask: Codable, Identifiable {
+    let id: UUID
+    let genreAssignmentId: UUID
+    let title: String
+    let description: String?
+    let priority: TaskPriority
+    let status: TaskStatus
+    let dueDate: Date?
+    let estimatedHours: Decimal?
+    let actualHours: Decimal?
+    let createdAt: Date
+    let updatedAt: Date
+    let createdBy: UUID
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case genreAssignmentId = "genre_assignment_id"
+        case title
+        case description
+        case priority
+        case status
+        case dueDate = "due_date"
+        case estimatedHours = "estimated_hours"
+        case actualHours = "actual_hours"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case createdBy = "created_by"
+    }
+}
+
+struct VisionBoardTaskCreate: Codable {
+    let genreAssignmentId: UUID
+    let title: String
+    let description: String?
+    let priority: TaskPriority
+    let dueDate: Date?
+    let estimatedHours: Decimal?
+    
+    enum CodingKeys: String, CodingKey {
+        case genreAssignmentId = "genre_assignment_id"
+        case title
+        case description
+        case priority
+        case dueDate = "due_date"
+        case estimatedHours = "estimated_hours"
+    }
+    
+    init(genreAssignmentId: UUID, title: String, description: String? = nil, priority: TaskPriority = .medium, dueDate: Date? = nil, estimatedHours: Decimal? = nil) {
+        self.genreAssignmentId = genreAssignmentId
+        self.title = title
+        self.description = description
+        self.priority = priority
+        self.dueDate = dueDate
+        self.estimatedHours = estimatedHours
+    }
+}
+
+struct VisionBoardTaskUpdate: Codable {
+    let title: String?
+    let description: String?
+    let priority: TaskPriority?
+    let status: TaskStatus?
+    let dueDate: Date?
+    let estimatedHours: Decimal?
+    let actualHours: Decimal?
+    
+    enum CodingKeys: String, CodingKey {
+        case title
+        case description
+        case priority
+        case status
+        case dueDate = "due_date"
+        case estimatedHours = "estimated_hours"
+        case actualHours = "actual_hours"
+    }
+    
+    init(title: String? = nil, description: String? = nil, priority: TaskPriority? = nil, status: TaskStatus? = nil, dueDate: Date? = nil, estimatedHours: Decimal? = nil, actualHours: Decimal? = nil) {
+        self.title = title
+        self.description = description
+        self.priority = priority
+        self.status = status
+        self.dueDate = dueDate
+        self.estimatedHours = estimatedHours
+        self.actualHours = actualHours
+    }
+}
+
+struct TaskDependency: Codable, Identifiable {
+    let id: UUID
+    let taskId: UUID
+    let dependsOnTaskId: UUID
+    let dependencyType: DependencyType
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case taskId = "task_id"
+        case dependsOnTaskId = "depends_on_task_id"
+        case dependencyType = "dependency_type"
+    }
+}
+
+struct TaskDependencyCreate: Codable {
+    let dependsOnTaskId: UUID
+    let dependencyType: DependencyType
+    
+    enum CodingKeys: String, CodingKey {
+        case dependsOnTaskId = "depends_on_task_id"
+        case dependencyType = "dependency_type"
+    }
+    
+    init(dependsOnTaskId: UUID, dependencyType: DependencyType = .finishToStart) {
+        self.dependsOnTaskId = dependsOnTaskId
+        self.dependencyType = dependencyType
+    }
+}
+
+struct TaskComment: Codable, Identifiable {
+    let id: UUID
+    let taskId: UUID
+    let userId: UUID
+    let comment: String
+    let createdAt: Date
+    let updatedAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case taskId = "task_id"
+        case userId = "user_id"
+        case comment
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct TaskCommentCreate: Codable {
+    let comment: String
+    
+    init(comment: String) {
+        self.comment = comment
+    }
+}
+
+struct TaskCommentUpdate: Codable {
+    let comment: String
+    
+    init(comment: String) {
+        self.comment = comment
+    }
+}
+
+struct TaskAttachment: Codable, Identifiable {
+    let id: UUID
+    let taskId: UUID
+    let fileName: String
+    let fileUrl: String
+    let fileType: String?
+    let fileSize: Int?
+    let uploadedBy: UUID
+    let uploadedAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case taskId = "task_id"
+        case fileName = "file_name"
+        case fileUrl = "file_url"
+        case fileType = "file_type"
+        case fileSize = "file_size"
+        case uploadedBy = "uploaded_by"
+        case uploadedAt = "uploaded_at"
+    }
+}
+
+struct TaskAttachmentCreate: Codable {
+    let fileName: String
+    let fileUrl: String
+    let fileType: String?
+    let fileSize: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case fileName = "file_name"
+        case fileUrl = "file_url"
+        case fileType = "file_type"
+        case fileSize = "file_size"
+    }
+    
+    init(fileName: String, fileUrl: String, fileType: String? = nil, fileSize: Int? = nil) {
+        self.fileName = fileName
+        self.fileUrl = fileUrl
+        self.fileType = fileType
+        self.fileSize = fileSize
+    }
+}
+
+// MARK: - Response Models with Related Data
+
+struct VisionBoardWithGenres: Codable, Identifiable {
+    let id: UUID
+    let name: String
+    let description: String?
+    let startDate: Date
+    let endDate: Date
+    let status: VisionBoardStatus
+    let createdAt: Date
+    let updatedAt: Date
+    let createdBy: UUID
+    let genres: [Genre]
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case startDate = "start_date"
+        case endDate = "end_date"
+        case status
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case createdBy = "created_by"
+        case genres
+    }
+}
+
+struct GenreWithAssignments: Codable, Identifiable {
+    let id: UUID
+    let visionboardId: UUID
+    let name: String
+    let description: String?
+    let minRequiredPeople: Int
+    let maxAllowedPeople: Int?
+    let createdAt: Date
+    let assignments: [GenreAssignment]
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case visionboardId = "visionboard_id"
+        case name
+        case description
+        case minRequiredPeople = "min_required_people"
+        case maxAllowedPeople = "max_allowed_people"
+        case createdAt = "created_at"
+        case assignments
+    }
+}
+
+struct GenreAssignmentWithDetails: Codable, Identifiable {
+    let id: UUID
+    let genreId: UUID
+    let userId: UUID
+    let status: AssignmentStatus
+    let workType: WorkType
+    let paymentType: PaymentType
+    let paymentAmount: Decimal?
+    let currency: String?
+    let invitedAt: Date
+    let respondedAt: Date?
+    let assignedBy: UUID
+    let userName: String?
+    let genreName: String?
+    let equipment: [RequiredEquipment]
+    let tasks: [VisionBoardTask]
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case genreId = "genre_id"
+        case userId = "user_id"
+        case status
+        case workType = "work_type"
+        case paymentType = "payment_type"
+        case paymentAmount = "payment_amount"
+        case currency
+        case invitedAt = "invited_at"
+        case respondedAt = "responded_at"
+        case assignedBy = "assigned_by"
+        case userName = "user_name"
+        case genreName = "genre_name"
+        case equipment
+        case tasks
+    }
+}
+
+struct VisionBoardTaskWithDetails: Codable, Identifiable {
+    let id: UUID
+    let genreAssignmentId: UUID
+    let title: String
+    let description: String?
+    let priority: TaskPriority
+    let status: TaskStatus
+    let dueDate: Date?
+    let estimatedHours: Decimal?
+    let actualHours: Decimal?
+    let createdAt: Date
+    let updatedAt: Date
+    let createdBy: UUID
+    let comments: [TaskComment]
+    let attachments: [TaskAttachment]
+    let dependencies: [TaskDependency]
+    let userName: String?
+    let genreName: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case genreAssignmentId = "genre_assignment_id"
+        case title
+        case description
+        case priority
+        case status
+        case dueDate = "due_date"
+        case estimatedHours = "estimated_hours"
+        case actualHours = "actual_hours"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case createdBy = "created_by"
+        case comments
+        case attachments
+        case dependencies
+        case userName = "user_name"
+        case genreName = "genre_name"
+    }
+}
+
+struct VisionBoardSummary: Codable, Identifiable {
+    let id: UUID
+    let name: String
+    let status: VisionBoardStatus
+    let startDate: Date
+    let endDate: Date
+    let totalGenres: Int
+    let totalAssignments: Int
+    let totalTasks: Int
+    let completedTasks: Int
+    let createdBy: UUID
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case status
+        case startDate = "start_date"
+        case endDate = "end_date"
+        case totalGenres = "total_genres"
+        case totalAssignments = "total_assignments"
+        case totalTasks = "total_tasks"
+        case completedTasks = "completed_tasks"
+        case createdBy = "created_by"
+    }
+}
+
+// MARK: - Statistics Models
+
+struct VisionBoardStats: Codable {
+    let totalVisionboards: Int
+    let activeVisionboards: Int
+    let completedVisionboards: Int
+    let totalAssignments: Int
+    let pendingAssignments: Int
+    let totalTasks: Int
+    let completedTasks: Int
+    let overdueTasks: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case totalVisionboards = "total_visionboards"
+        case activeVisionboards = "active_visionboards"
+        case completedVisionboards = "completed_visionboards"
+        case totalAssignments = "total_assignments"
+        case pendingAssignments = "pending_assignments"
+        case totalTasks = "total_tasks"
+        case completedTasks = "completed_tasks"
+        case overdueTasks = "overdue_tasks"
+    }
+}
+
+// MARK: - Helper Types
+
+// Helper for handling any JSON value in specifications
+struct AnyCodable: Codable {
+    let value: Any
+    
+    init<T>(_ value: T?) {
+        self.value = value ?? ()
+    }
+}
+
+extension AnyCodable {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        
+        if let intValue = try? container.decode(Int.self) {
+            value = intValue
+        } else if let doubleValue = try? container.decode(Double.self) {
+            value = doubleValue
+        } else if let stringValue = try? container.decode(String.self) {
+            value = stringValue
+        } else if let boolValue = try? container.decode(Bool.self) {
+            value = boolValue
+        } else if let arrayValue = try? container.decode([AnyCodable].self) {
+            value = arrayValue.map { $0.value }
+        } else if let dictionaryValue = try? container.decode([String: AnyCodable].self) {
+            value = dictionaryValue.mapValues { $0.value }
+        } else {
+            value = ()
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        
+        switch value {
+        case let intValue as Int:
+            try container.encode(intValue)
+        case let doubleValue as Double:
+            try container.encode(doubleValue)
+        case let stringValue as String:
+            try container.encode(stringValue)
+        case let boolValue as Bool:
+            try container.encode(boolValue)
+        case let arrayValue as [Any]:
+            let codableArray = arrayValue.map { AnyCodable($0) }
+            try container.encode(codableArray)
+        case let dictionaryValue as [String: Any]:
+            let codableDictionary = dictionaryValue.mapValues { AnyCodable($0) }
+            try container.encode(codableDictionary)
+        default:
+            try container.encodeNil()
+        }
+    }
+}
+
+// Custom Decimal Codable support
+extension Decimal: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        
+        if let doubleValue = try? container.decode(Double.self) {
+            self = Decimal(doubleValue)
+        } else if let stringValue = try? container.decode(String.self) {
+            self = Decimal(string: stringValue) ?? 0
+        } else {
+            self = 0
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(self.description)
+    }
+}
+
+// MARK: - Vision Board Creation Request Models
+
+// API Response Models
+struct VisionBoardResponse: Codable {
+    let message: String
+    let visionboard: VisionBoard
+}
+
+struct GenreResponse: Codable {
+    let message: String
+    let genre: Genre
+}
+
+struct AssignmentResponse: Codable {
+    let message: String
+    let assignment: GenreAssignment
+}
+
+struct NotificationResponse: Codable {
+    let message: String
+    let success: Bool
+}
+
+// Request models for the multi-step API process
+struct AssignmentCreate: Codable {
+    let userId: UUID
+    let workType: WorkType
+    let paymentType: PaymentType
+    let paymentAmount: Decimal?
+    let currency: String?
+    let genreName: String // Track which genre this assignment belongs to
+    
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case workType = "work_type"
+        case paymentType = "payment_type"
+        case paymentAmount = "payment_amount"
+        case currency
+        case genreName = "genre_name"
+    }
+}
+
+// Legacy models (keeping for backward compatibility)
+struct VisionBoardCreateRequest: Codable {
+    let name: String
+    let description: String?
+    let startDate: Date
+    let endDate: Date
+    let status: VisionBoardStatus
+    let genres: [GenreAssignmentRequest]
+}
+
+struct GenreAssignmentRequest: Codable {
+    let genre: UserGenre
+    let assignments: [CreatorAssignmentRequest]
+}
+
+struct CreatorAssignmentRequest: Codable {
+    let userId: UUID
+    let workMode: WorkMode
+    let paymentType: PaymentType
+    let paymentAmount: Decimal?
+    let startDate: Date
+    let endDate: Date
+    let requiredEquipments: [String]
 } 
