@@ -170,6 +170,26 @@ class Creatist {
         return []
     }
     
+    // Fetch followers list for any user
+    func fetchFollowers(for userId: String) async -> [User] {
+        struct FollowersResponse: Codable { let message: String; let followers: [User] }
+        let url = "/v1/followers/\(userId)"
+        if let response: FollowersResponse = await NetworkManager.shared.get(url: url) {
+            return response.followers
+        }
+        return []
+    }
+    
+    // Fetch following list for a user and genre (role)
+    func fetchFollowing(for userId: UUID, genre: UserGenre) async -> [User] {
+        let url = "/v1/following/\(userId.uuidString)/\(genre.rawValue)"
+        struct FollowingResponse: Codable { let message: String; let following: [User] }
+        if let response: FollowingResponse = await NetworkManager.shared.get(url: url) {
+            return response.following
+        }
+        return []
+    }
+    
     // Helper to format Date as ISO8601 string
     private func iso8601String(from date: Date) -> String {
         let formatter = ISO8601DateFormatter()
