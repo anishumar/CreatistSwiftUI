@@ -397,6 +397,10 @@ struct InvitationPanelView: View {
     }
 }
 
+struct IdentifiableUUID: Identifiable, Equatable {
+    let id: UUID
+}
+
 struct VisionDetailView: View {
     let board: VisionBoard
     @State private var genres: [GenreWithAssignments] = []
@@ -407,6 +411,9 @@ struct VisionDetailView: View {
     @State private var showStartConfirm = false
     @State private var remindLoading: [UUID: Bool] = [:]
     @State private var remindSuccess: [UUID: Bool] = [:]
+    @State private var showAddUserSheetForGenre: IdentifiableUUID? = nil
+    @State private var following: [User] = []
+    @State private var isLoadingFollowing = false
 
     init(board: VisionBoard) {
         self.board = board
@@ -432,6 +439,22 @@ struct VisionDetailView: View {
         genres.flatMap { $0.assignments }.filter { $0.status == .pending }
     }
 
+    // Returns only the latest (non-rejected) assignments per genre
+    var activeAssignments: [GenreAssignment] {
+        genres.flatMap { genre in
+            // If there are multiple assignments for the same genre, only keep those that are not rejected
+            genre.assignments.filter { $0.status != .rejected }
+        }
+    }
+    // Returns true if any active assignment is accepted
+    var anyAssignmentAccepted: Bool {
+        activeAssignments.contains { $0.status == .accepted }
+    }
+    // Returns true if any active assignment is pending
+    var hasPendingOrRejected: Bool {
+        activeAssignments.contains { $0.status == .pending }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -445,10 +468,12 @@ struct VisionDetailView: View {
                     Text(board.endDate, style: .date)
                 }.font(.caption)
                 Divider()
+                // --- Show only active (non-rejected) pending assignments ---
+                let pendingAssignments = activeAssignments.filter { $0.status == .pending }
                 if !pendingAssignments.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Pending Users:").font(.headline)
-                        ForEach(pendingAssignments, id: \.id) { assignment in
+                        ForEach(pendingAssignments, id: \ .id) { assignment in
                             HStack {
                                 AssignmentRowView(assignment: assignment)
                                 Spacer()
@@ -473,8 +498,25 @@ struct VisionDetailView: View {
                     ForEach(genres) { genre in
                         VStack(alignment: .leading, spacing: 8) {
                             Text(genre.name).font(.headline)
-                            ForEach(genre.assignments, id: \.id) { assignment in
+                            // Only show non-rejected assignments for this genre
+                            ForEach(genre.assignments.filter { $0.status != .rejected }, id: \ .id) { assignment in
                                 AssignmentRowView(assignment: assignment)
+                            }
+                            // Show Add User button ONCE per genre if any assignment is pending
+                            if isCreator && genre.assignments.contains(where: { $0.status == .pending }) {
+                                Button("Add User") {
+                                    showAddUserSheetForGenre = IdentifiableUUID(id: genre.id)
+                                    Task {
+                                        isLoadingFollowing = true
+                                        if let userId = Creatist.shared.user?.id {
+                                            let alreadyAssigned = Set(genre.assignments.map { $0.userId })
+                                            let allFollowing = await Creatist.shared.fetchFollowing(for: userId, genre: UserGenre(rawValue: genre.name) ?? .editor)
+                                            following = allFollowing.filter { !alreadyAssigned.contains($0.id) }
+                                        }
+                                        isLoadingFollowing = false
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
                             }
                         }
                         .padding(.vertical, 4)
@@ -496,8 +538,8 @@ struct VisionDetailView: View {
                             Text("Start")
                         }
                     }
-                    .disabled(!allAssignmentsAccepted)
-                    .help(!allAssignmentsAccepted ? "All partners must accept their invitation before starting." : "")
+                    .disabled(!anyAssignmentAccepted)
+                    .help(!anyAssignmentAccepted ? "At least one partner must accept their invitation before starting." : "")
                 }
             }
         }
@@ -519,6 +561,13 @@ struct VisionDetailView: View {
         }
         .onDisappear {
             NotificationCenter.default.removeObserver(self, name: .didRespondToInvitation, object: nil)
+        }
+        .sheet(item: $showAddUserSheetForGenre) { identifiable in
+            let genreId = identifiable.id
+            AddUserSheet(followers: following, onSelect: { user in
+                showAddUserSheetForGenre = nil
+                Task { await addAssignmentAndInvite(for: genreId, user: user) }
+            }, onCancel: { showAddUserSheetForGenre = nil })
         }
     }
 
@@ -659,6 +708,37 @@ struct VisionDetailView: View {
             }
         }
     }
+
+    @MainActor
+    func addAssignmentAndInvite(for genreId: UUID, user: User) async {
+        // 1. Create assignment
+        guard let token = KeychainHelper.get("accessToken"), !token.isEmpty else { return }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/assignments") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Use default work/payment type for now
+        let assignmentData: [String: Any] = [
+            "genre_id": genreId.uuidString,
+            "user_id": user.id.uuidString,
+            "work_type": "Online",
+            "payment_type": "Paid",
+            "payment_amount": 0,
+            "currency": "USD"
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: assignmentData)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
+            // 2. Send invite/notification (reuse notification logic or call backend)
+            // (Assume backend sends invite on assignment creation)
+            // 3. Refresh assignments
+            fetchGenresAndAssignments()
+        } catch {
+            print("[DEBUG] Error adding assignment: \(error)")
+        }
+    }
 }
 
 struct VisionInProgressView: View {
@@ -764,6 +844,59 @@ struct AssignmentRowView: View {
                 print("[DEBUG] Error fetching user info for assignment: \(error)")
                 await MainActor.run {
                     self.isLoading = false
+                }
+            }
+        }
+    }
+}
+
+struct AddUserSheet: View {
+    let followers: [User]
+    let onSelect: (User) -> Void
+    let onCancel: () -> Void
+    @State private var searchText = ""
+
+    var filteredFollowers: [User] {
+        if searchText.isEmpty { return followers }
+        return followers.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    var body: some View {
+        NavigationView {
+            List(filteredFollowers, id: \ .id) { user in
+                Button(action: { onSelect(user) }) {
+                    HStack {
+                        if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
+                            AsyncImage(url: url) { phase in
+                                if let image = phase.image {
+                                    image.resizable().aspectRatio(contentMode: .fill)
+                                } else if phase.error != nil {
+                                    Image(systemName: "person.crop.circle.fill")
+                                        .resizable().aspectRatio(contentMode: .fill)
+                                        .foregroundColor(.gray)
+                                } else {
+                                    ProgressView()
+                                }
+                            }
+                            .frame(width: 36, height: 36)
+                            .clipShape(Circle())
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .resizable()
+                                .frame(width: 36, height: 36)
+                                .clipShape(Circle())
+                                .foregroundColor(.gray)
+                        }
+                        Text(user.name)
+                            .padding(.leading, 8)
+                    }
+                }
+            }
+            .searchable(text: $searchText)
+            .navigationTitle("Add User")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onCancel() }
                 }
             }
         }
