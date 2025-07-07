@@ -162,8 +162,9 @@ class Creatist {
     // Fetch users you are following for a given genre
     func fetchFollowingForGenre(userId: UUID, genre: UserGenre) async -> [User] {
         let url = "/v1/following/\(userId.uuidString)/\(genre.rawValue)"
-        if let response: ArtistsResponse = await NetworkManager.shared.get(url: url) {
-            return response.artists
+        struct FollowingResponse: Codable { let message: String; let following: [User] }
+        if let response: FollowingResponse = await NetworkManager.shared.get(url: url) {
+            return response.following
         }
         return []
     }
@@ -201,7 +202,13 @@ class Creatist {
             
             // Step 1: Create the vision board
             print("📤 Step 1: Creating vision board...")
+            guard let currentUser = self.user else {
+                print("❌ No current user found for vision board creation")
+                return false
+            }
             let visionBoardData: [String: Any] = [
+                "id": UUID().uuidString,
+                "owner_id": currentUser.id.uuidString,
                 "name": name,
                 "description": description ?? "",
                 "start_date": iso8601String(from: startDate),
