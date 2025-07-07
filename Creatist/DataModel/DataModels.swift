@@ -1004,49 +1004,28 @@ struct AnyCodable: Codable {
     init<T>(_ value: T?) {
         self.value = value ?? ()
     }
-}
-
-extension AnyCodable {
+    
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        
-        if let intValue = try? container.decode(Int.self) {
-            value = intValue
-        } else if let doubleValue = try? container.decode(Double.self) {
-            value = doubleValue
-        } else if let stringValue = try? container.decode(String.self) {
-            value = stringValue
-        } else if let boolValue = try? container.decode(Bool.self) {
-            value = boolValue
-        } else if let arrayValue = try? container.decode([AnyCodable].self) {
-            value = arrayValue.map { $0.value }
-        } else if let dictionaryValue = try? container.decode([String: AnyCodable].self) {
-            value = dictionaryValue.mapValues { $0.value }
-        } else {
-            value = ()
-        }
+        if let intVal = try? container.decode(Int.self) { value = intVal; return }
+        if let doubleVal = try? container.decode(Double.self) { value = doubleVal; return }
+        if let boolVal = try? container.decode(Bool.self) { value = boolVal; return }
+        if let stringVal = try? container.decode(String.self) { value = stringVal; return }
+        if let dictVal = try? container.decode([String: AnyCodable].self) { value = dictVal; return }
+        if let arrVal = try? container.decode([AnyCodable].self) { value = arrVal; return }
+        value = ()
     }
     
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        
         switch value {
-        case let intValue as Int:
-            try container.encode(intValue)
-        case let doubleValue as Double:
-            try container.encode(doubleValue)
-        case let stringValue as String:
-            try container.encode(stringValue)
-        case let boolValue as Bool:
-            try container.encode(boolValue)
-        case let arrayValue as [Any]:
-            let codableArray = arrayValue.map { AnyCodable($0) }
-            try container.encode(codableArray)
-        case let dictionaryValue as [String: Any]:
-            let codableDictionary = dictionaryValue.mapValues { AnyCodable($0) }
-            try container.encode(codableDictionary)
-        default:
-            try container.encodeNil()
+        case let intVal as Int: try container.encode(intVal)
+        case let doubleVal as Double: try container.encode(doubleVal)
+        case let boolVal as Bool: try container.encode(boolVal)
+        case let stringVal as String: try container.encode(stringVal)
+        case let dictVal as [String: AnyCodable]: try container.encode(dictVal)
+        case let arrVal as [AnyCodable]: try container.encode(arrVal)
+        default: try container.encodeNil()
         }
     }
 }
@@ -1136,4 +1115,60 @@ struct CreatorAssignmentRequest: Codable {
     let startDate: Date
     let endDate: Date
     let requiredEquipments: [String]
+}
+
+// MARK: - Notification Model (Generic)
+struct NotificationItem: Codable, Identifiable {
+    let id: UUID
+    let receiverId: UUID
+    let senderId: UUID
+    let objectType: String
+    let objectId: UUID
+    let eventType: String
+    var status: String // "unread", "read", etc.
+    let data: [String: AnyCodable]?
+    let message: String
+    let createdAt: Date
+    let updatedAt: Date
+    enum CodingKeys: String, CodingKey {
+        case id
+        case receiverId = "receiver_id"
+        case senderId = "sender_id"
+        case objectType = "object_type"
+        case objectId = "object_id"
+        case eventType = "event_type"
+        case status
+        case data
+        case message
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+// MARK: - Invitation Model
+struct Invitation: Codable, Identifiable {
+    let id: UUID
+    let receiverId: UUID
+    let senderId: UUID
+    let objectType: String
+    let objectId: UUID
+    var status: String
+    let data: [String: AnyCodable]?
+    let createdAt: Date
+    let respondedAt: Date?
+    enum CodingKeys: String, CodingKey {
+        case id, status, data
+        case receiverId = "receiver_id"
+        case senderId = "sender_id"
+        case objectType = "object_type"
+        case objectId = "object_id"
+        case createdAt = "created_at"
+        case respondedAt = "responded_at"
+    }
+}
+
+// Response wrapper for genre with assignments
+struct GenreWithAssignmentsResponse: Codable {
+    let message: String
+    let genre: GenreWithAssignments
 } 

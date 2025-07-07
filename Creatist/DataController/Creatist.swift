@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // Import all data models from DataModels.swift
 // (No data model structs/enums should be defined here)
@@ -391,5 +392,265 @@ class Creatist {
         }
         print("❌ Failed to fetch users for vision board")
         return []
+    }
+}
+
+// MARK: - Notification ViewModel
+
+class NotificationViewModel: ObservableObject {
+    @Published var notifications: [NotificationItem] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String? = nil
+    private var cancellables = Set<AnyCancellable>()
+    
+    func fetchNotifications() async {
+        print("[DEBUG] fetchNotifications called")
+        let accessToken = KeychainHelper.get("accessToken")
+        print("[DEBUG] Access token: \(accessToken ?? "nil")")
+        guard let token = accessToken, !token.isEmpty else {
+            print("[DEBUG] No access token found. User is not logged in.")
+            await MainActor.run { self.errorMessage = "Not logged in. Please sign in again." }
+            return
+        }
+        await MainActor.run { self.isLoading = true }
+        defer { Task { await MainActor.run { self.isLoading = false } } }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications") else { print("[DEBUG] Invalid URL"); return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            print("[DEBUG] Notifications API response: \(String(data: data, encoding: .utf8) ?? "nil")")
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("[DEBUG] HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+                await MainActor.run { self.errorMessage = "Failed to fetch notifications." }
+                return
+            }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let dateString = try container.decode(String.self)
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                // Try fallback without fractional seconds
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted.")
+            }
+            let notifications = try decoder.decode([NotificationItem].self, from: data)
+            print("[DEBUG] Parsed notifications: \(notifications)")
+            await MainActor.run { self.notifications = notifications }
+        } catch {
+            print("[DEBUG] Error fetching notifications: \(error)")
+            await MainActor.run { self.errorMessage = error.localizedDescription }
+        }
+    }
+    
+    func respond(to notification: NotificationItem, response: String, comment: String) async {
+        print("[DEBUG] respond called for notification id: \(notification.id), response: \(response), comment: \(comment)")
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications/\(notification.id)/respond") else { print("[DEBUG] Invalid URL"); return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "response": response,
+            "comment": comment
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do {
+            let (data, httpResponse) = try await URLSession.shared.data(for: request)
+            print("[DEBUG] Respond API response: \(String(data: data, encoding: .utf8) ?? "nil")")
+            guard let httpResponse = httpResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("[DEBUG] HTTP error: \(httpResponse as? HTTPURLResponse)?.statusCode ?? -1)")
+                await MainActor.run { self.errorMessage = "Failed to respond to notification." }
+                return
+            }
+            if let idx = self.notifications.firstIndex(where: { $0.id == notification.id }) {
+                await MainActor.run { self.notifications[idx].status = response }
+            }
+        } catch {
+            print("[DEBUG] Error responding to notification: \(error)")
+            await MainActor.run { self.errorMessage = error.localizedDescription }
+        }
+    }
+}
+
+class InvitationListViewModel: ObservableObject {
+    @Published var invitations: [Invitation] = []
+    @Published var visionBoards: [UUID: VisionBoard] = [:] // visionboard_id: VisionBoard
+    @Published var genres: [UUID: GenreWithAssignments] = [:] // genre_id: GenreWithAssignments
+    @Published var senders: [UUID: User] = [:] // sender_id: User
+    @Published var isLoading = false
+    @Published var errorMessage: String? = nil
+
+    func fetchInvitationsAndBoards() async {
+        print("[DEBUG] fetchInvitationsAndBoards called")
+        let accessToken = KeychainHelper.get("accessToken")
+        print("[DEBUG] Access token: \(accessToken ?? "nil")")
+        guard let token = accessToken, !token.isEmpty else {
+            print("[DEBUG] No access token found. User is not logged in.")
+            await MainActor.run { self.errorMessage = "Not logged in. Please sign in again." }
+            return
+        }
+        await MainActor.run { self.isLoading = true }
+        defer { Task { await MainActor.run { self.isLoading = false } } }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/invitations/user?status=pending") else { print("[DEBUG] Invalid URL"); return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            print("[DEBUG] Invitations API response: \(String(data: data, encoding: .utf8) ?? "nil")")
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("[DEBUG] HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+                await MainActor.run { self.errorMessage = "Failed to fetch invitations." }
+                return
+            }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let dateString = try container.decode(String.self)
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted.")
+            }
+            let result = try decoder.decode([String: [Invitation]].self, from: data)
+            let invitations = result["invitations"] ?? []
+            print("[DEBUG] Parsed invitations: \(invitations)")
+            await MainActor.run { self.invitations = invitations }
+            // Fetch vision boards and sender info for each invitation
+            for invitation in invitations {
+                await fetchSender(userId: invitation.senderId, token: token)
+                if invitation.objectType == "visionboard" {
+                    await fetchVisionBoard(visionboardId: invitation.objectId, token: token)
+                } else if invitation.objectType == "genre" {
+                    await fetchGenreAndVisionBoard(genreId: invitation.objectId, token: token)
+                }
+            }
+        } catch {
+            print("[DEBUG] Error fetching invitations: \(error)")
+            await MainActor.run { self.errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func fetchSender(userId: UUID, token: String) async {
+        guard senders[userId] == nil else { return }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/users/\(userId.uuidString)") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let user = try decoder.decode(User.self, from: data)
+            await MainActor.run { self.senders[user.id] = user }
+        } catch {
+            print("[DEBUG] Error fetching sender: \(error)")
+        }
+    }
+
+    private func fetchVisionBoard(visionboardId: UUID, token: String) async {
+        guard visionBoards[visionboardId] == nil else { return } // Already fetched
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/\(visionboardId.uuidString)") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            print("[DEBUG] VisionBoard API response: \(String(data: data, encoding: .utf8) ?? "nil")")
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let dateString = try container.decode(String.self)
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted.")
+            }
+            let result = try decoder.decode(VisionBoardResponse.self, from: data)
+            let vb = result.visionboard
+            await MainActor.run { self.visionBoards[vb.id] = vb }
+        } catch {
+            print("[DEBUG] Error fetching vision board: \(error)")
+        }
+    }
+
+    private func fetchGenreAndVisionBoard(genreId: UUID, token: String) async {
+        guard genres[genreId] == nil else { return }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/genres/\(genreId.uuidString)/with-assignments") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            print("[DEBUG] GenreWithAssignments API response: \(String(data: data, encoding: .utf8) ?? "nil")")
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let dateString = try container.decode(String.self)
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted.")
+            }
+            let result = try decoder.decode(GenreWithAssignmentsResponse.self, from: data)
+            let genre = result.genre
+            await MainActor.run { self.genres[genre.id] = genre }
+            await fetchVisionBoard(visionboardId: genre.visionboardId, token: token)
+        } catch {
+            print("[DEBUG] Error fetching genre/vision board: \(error)")
+        }
+    }
+
+    func respondToInvitation(invitation: Invitation, response: String, data: [String: Any]? = nil) async {
+        guard let token = KeychainHelper.get("accessToken"), !token.isEmpty else { return }
+        let urlString = NetworkManager.baseURL + "/v1/visionboard/invitations/\(invitation.id)/respond?response=\(response.lowercased())"
+        guard let url = URL(string: urlString) else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let data = data {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: ["data": data])
+        }
+        do {
+            let (data, httpResponse) = try await URLSession.shared.data(for: request)
+            print("[DEBUG] Invitation respond API response: \(String(data: data, encoding: .utf8) ?? "nil")")
+            guard let httpResponse = httpResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
+            // Update status locally
+            if let idx = self.invitations.firstIndex(where: { $0.id == invitation.id }) {
+                await MainActor.run { self.invitations[idx].status = response.lowercased() }
+            }
+        } catch {
+            print("[DEBUG] Error responding to invitation: \(error)")
+        }
     }
 }

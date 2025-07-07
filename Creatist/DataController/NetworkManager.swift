@@ -26,6 +26,7 @@ struct TokenRefreshResponse: Codable {
 actor NetworkManager {
     // MARK: Public
     public static let shared: NetworkManager = .init()
+    public static let baseURL = endpoint
 
     // MARK: Internal
     func get<T: Codable>(url: String, queryParameters: [String: Any]? = nil) async -> T? {
