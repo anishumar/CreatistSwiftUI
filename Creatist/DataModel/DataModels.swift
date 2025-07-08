@@ -1171,4 +1171,15 @@ struct Invitation: Codable, Identifiable {
 struct GenreWithAssignmentsResponse: Codable {
     let message: String
     let genre: GenreWithAssignments
+}
+
+// MARK: - UI Helper Models (moved from VisionBoardView.swift)
+
+struct IdentifiableUUID: Identifiable, Equatable {
+    let id: UUID
+}
+
+struct UserResponse: Codable {
+    let message: String?
+    let user: User
 } 

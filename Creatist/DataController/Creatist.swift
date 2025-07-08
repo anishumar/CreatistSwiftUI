@@ -439,7 +439,7 @@ class NotificationViewModel: ObservableObject {
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
             print("[DEBUG] Notifications API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("[DEBUG] HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
@@ -483,7 +483,7 @@ class NotificationViewModel: ObservableObject {
         ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         do {
-            let (data, httpResponse) = try await URLSession.shared.data(for: request)
+            let (data, httpResponse) = try await NetworkManager.shared.authorizedRequest(request)
             print("[DEBUG] Respond API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = httpResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("[DEBUG] HTTP error: \(httpResponse as? HTTPURLResponse)?.statusCode ?? -1)")
@@ -524,7 +524,7 @@ class InvitationListViewModel: ObservableObject {
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
             print("[DEBUG] Invitations API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("[DEBUG] HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
@@ -572,7 +572,7 @@ class InvitationListViewModel: ObservableObject {
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
@@ -590,7 +590,7 @@ class InvitationListViewModel: ObservableObject {
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
             print("[DEBUG] VisionBoard API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             let decoder = JSONDecoder()
@@ -623,7 +623,7 @@ class InvitationListViewModel: ObservableObject {
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
             print("[DEBUG] GenreWithAssignments API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             let decoder = JSONDecoder()
@@ -662,7 +662,7 @@ class InvitationListViewModel: ObservableObject {
             request.httpBody = try? JSONSerialization.data(withJSONObject: ["data": data])
         }
         do {
-            let (data, httpResponse) = try await URLSession.shared.data(for: request)
+            let (data, httpResponse) = try await NetworkManager.shared.authorizedRequest(request)
             print("[DEBUG] Invitation respond API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = httpResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             // Update status locally
@@ -671,6 +671,117 @@ class InvitationListViewModel: ObservableObject {
             }
         } catch {
             print("[DEBUG] Error responding to invitation: \(error)")
+        }
+    }
+}
+
+// MARK: - Vision Board Detail Logic (moved from VisionDetailView)
+
+extension Creatist {
+    // Fetch genres and assignments for a vision board
+    func fetchGenresAndAssignments(for board: VisionBoard) async -> [GenreWithAssignments] {
+        guard let token = KeychainHelper.get("accessToken"), !token.isEmpty else { return [] }
+        guard let genresUrl = URL(string: NetworkManager.baseURL + "/v1/visionboard/\(board.id.uuidString.lowercased())/with-genres") else { return [] }
+        var genresRequest = URLRequest(url: genresUrl)
+        genresRequest.httpMethod = "GET"
+        genresRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (genresData, genresResponse) = try await NetworkManager.shared.authorizedRequest(genresRequest)
+            guard let genresHttp = genresResponse as? HTTPURLResponse, genresHttp.statusCode == 200 else { return [] }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let dateString = try container.decode(String.self)
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted.")
+            }
+            struct GenresResponse: Codable { let visionboard: VisionBoardWithGenres }
+            let result = try decoder.decode(GenresResponse.self, from: genresData)
+            var genresWithAssignments: [GenreWithAssignments] = []
+            for genre in result.visionboard.genres {
+                guard let genreAssignmentsUrl = URL(string: NetworkManager.baseURL + "/v1/visionboard/genres/\(genre.id.uuidString)/with-assignments") else { continue }
+                var genreAssignmentsRequest = URLRequest(url: genreAssignmentsUrl)
+                genreAssignmentsRequest.httpMethod = "GET"
+                genreAssignmentsRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                do {
+                    let (assignmentsData, assignmentsResponse) = try await NetworkManager.shared.authorizedRequest(genreAssignmentsRequest)
+                    guard let assignmentsHttp = assignmentsResponse as? HTTPURLResponse, assignmentsHttp.statusCode == 200 else { continue }
+                    struct GenreWithAssignmentsResponse: Codable { let genre: GenreWithAssignments }
+                    let assignmentsResult = try decoder.decode(GenreWithAssignmentsResponse.self, from: assignmentsData)
+                    genresWithAssignments.append(assignmentsResult.genre)
+                } catch {
+                    print("[DEBUG] Error fetching assignments for genre \(genre.id): \(error)")
+                }
+            }
+            return genresWithAssignments
+        } catch {
+            print("[DEBUG] Error fetching genres/assignments: \(error)")
+            return []
+        }
+    }
+
+    // Start a vision board
+    func startVision(board: VisionBoard) async -> Bool {
+        guard let token = KeychainHelper.get("accessToken"), !token.isEmpty else { return false }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/\(board.id.uuidString.lowercased())") else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let update = VisionBoardUpdate(status: .active)
+        guard let body = try? JSONEncoder().encode(update) else { return false }
+        request.httpBody = body
+        do {
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return false }
+            return true
+        } catch {
+            print("[DEBUG] Error starting vision: \(error)")
+            return false
+        }
+    }
+
+    // Remind a user (simulate network delay for now)
+    func remindUser(assignment: GenreAssignment) async -> Bool {
+        // TODO: Call backend notification endpoint to resend invite
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // Simulate network delay
+        return true
+    }
+
+    // Add assignment and invite a user
+    func addAssignmentAndInvite(genreId: UUID, user: User, board: VisionBoard) async -> Bool {
+        guard let token = KeychainHelper.get("accessToken"), !token.isEmpty else { return false }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/assignments") else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Use default work/payment type for now
+        let assignmentData: [String: Any] = [
+            "genre_id": genreId.uuidString,
+            "user_id": user.id.uuidString,
+            "work_type": "Online",
+            "payment_type": "Paid",
+            "payment_amount": 0,
+            "currency": "USD"
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: assignmentData)
+        do {
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return false }
+            // (Assume backend sends invite on assignment creation)
+            return true
+        } catch {
+            print("[DEBUG] Error adding assignment: \(error)")
+            return false
         }
     }
 }

@@ -5,6 +5,7 @@ struct UserProfileView: View {
     @ObservedObject var viewModel: UserListViewModel
     @State private var followersCount: Int = 0
     @State private var followingCount: Int = 0
+    @State private var showDirectChat = false
     
     var user: User? {
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
@@ -126,15 +127,15 @@ struct UserProfileView: View {
                         FollowButton(userId: user.id, viewModel: viewModel)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
-                        Button(action: {}) {
+                        Button(action: { showDirectChat = true }) {
                             Text("Message")
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
-                                .background(Color.gray.opacity(0.2))
-                                .foregroundColor(.gray)
+                                .background(Color.accentColor.opacity(0.2))
+                                .foregroundColor(.accentColor)
                                 .cornerRadius(8)
                         }
-                        .disabled(true) // Placeholder
+                        .disabled(false)
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 24)
@@ -152,5 +153,27 @@ struct UserProfileView: View {
         .navigationTitle(user?.name ?? "Profile")
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(.systemBackground))
+        .fullScreenCover(isPresented: $showDirectChat) {
+            if let currentUser = Creatist.shared.user, let otherUser = user {
+                let urlString = "ws://localhost:8080/ws/message/\(otherUser.id.uuidString)?token=\(KeychainHelper.get("accessToken") ?? "")"
+                if let url = URL(string: urlString) {
+                    ChatView(
+                        manager: ChatWebSocketManager(
+                            url: url,
+                            token: KeychainHelper.get("accessToken") ?? "",
+                            userId: currentUser.id.uuidString,
+                            isGroupChat: false,
+                            otherUserId: otherUser.id.uuidString
+                        ),
+                        currentUserId: currentUser.id.uuidString,
+                        title: "Chat with \(otherUser.name)"
+                    )
+                } else {
+                    Text("Invalid chat URL")
+                }
+            } else {
+                Text("User not logged in")
+            }
+        }
     }
 } 

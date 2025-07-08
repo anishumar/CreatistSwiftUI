@@ -191,7 +191,7 @@ actor NetworkManager {
         }
     }
 
-    private func refreshToken() async -> Bool {
+    func refreshToken() async -> Bool {
         guard let refreshToken = KeychainHelper.get("refreshToken") else { return false }
         guard let url = URL(string: endpoint + "/auth/refresh") else { return false }
         var request = URLRequest(url: url)
@@ -229,5 +229,26 @@ actor NetworkManager {
             print("PATCH error: \(error)")
             return nil
         }
+    }
+
+    /// Makes an authorized REST request, auto-refreshing the access token on 401.
+    func authorizedRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        var req = request
+        if req.value(forHTTPHeaderField: "Authorization") == nil {
+            req.setValue("Bearer \(KeychainHelper.get("accessToken") ?? "")", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await URLSession.shared.data(for: req)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 401 {
+            // Try to refresh token
+            let refreshed = await NetworkManager.shared.refreshToken()
+            if refreshed {
+                var retryReq = request
+                retryReq.setValue("Bearer \(KeychainHelper.get("accessToken") ?? "")", forHTTPHeaderField: "Authorization")
+                return try await URLSession.shared.data(for: retryReq)
+            } else {
+                throw URLError(.userAuthenticationRequired)
+            }
+        }
+        return (data, response)
     }
 } 
