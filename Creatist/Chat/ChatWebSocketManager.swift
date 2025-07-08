@@ -10,7 +10,7 @@ class ChatWebSocketManager: ObservableObject {
     private var webSocketTask: URLSessionWebSocketTask?
     private var url: URL
     private var token: String
-    private var userId: String
+    var userId: String
     private var cancellables = Set<AnyCancellable>()
     private var reconnectTimer: Timer?
     private var isGroupChat: Bool
@@ -103,11 +103,7 @@ class ChatWebSocketManager: ObservableObject {
                 let messages = response.messages
                 print("📚 ChatWebSocketManager: Successfully loaded \(messages.count) messages from history")
                 DispatchQueue.main.async {
-                    self.messages = messages.map { msg in
-                        var m = msg
-                        m.isCurrentUser = (msg.senderId == self.userId)
-                        return m
-                    }
+                    self.messages = messages
                     print("📚 ChatWebSocketManager: Updated UI with \(self.messages.count) messages")
                 }
             } else {
@@ -253,7 +249,6 @@ class ChatWebSocketManager: ObservableObject {
                     } else {
                         createdAt = Date()
                     }
-                    let isCurrentUser = (senderId == self.userId)
                     let avatarUrl = innerJson["avatar_url"] as? String ?? (json["avatar_url"] as? String)
                     let receiverId = innerJson["receiver_id"] as? String ?? ""
                     let id = json["timestamp"] as? String ?? UUID().uuidString
@@ -266,8 +261,7 @@ class ChatWebSocketManager: ObservableObject {
                         receiverId: receiverId,
                         message: message,
                         createdAt: createdAt,
-                        avatarUrl: avatarUrl,
-                        isCurrentUser: isCurrentUser
+                        avatarUrl: avatarUrl
                     )
                     DispatchQueue.main.async {
                         if !self.messages.contains(where: { $0.id == chatMessage.id }) {
@@ -296,12 +290,11 @@ class ChatWebSocketManager: ObservableObject {
                     createdAt = Date()
                     print("📨 ChatWebSocketManager: Using current timestamp")
                 }
-                let isCurrentUser = (senderId == self.userId)
                 let avatarUrl = json["avatar_url"] as? String
                 let receiverId = json["receiver_id"] as? String ?? ""
                 let id = json["id"] as? String ?? UUID().uuidString
-                print("📨 ChatWebSocketManager: Message details - isCurrentUser: \(isCurrentUser), avatarUrl: \(avatarUrl ?? "nil")")
-                let chatMessage = ChatMessage(id: id, senderId: senderId, receiverId: receiverId, message: message, createdAt: createdAt, avatarUrl: avatarUrl, isCurrentUser: isCurrentUser)
+                print("📨 ChatWebSocketManager: Message details - avatarUrl: \(avatarUrl ?? "nil")")
+                let chatMessage = ChatMessage(id: id, senderId: senderId, receiverId: receiverId, message: message, createdAt: createdAt, avatarUrl: avatarUrl)
                 DispatchQueue.main.async {
                     if !self.messages.contains(where: { $0.id == chatMessage.id }) {
                         self.messages.append(chatMessage)

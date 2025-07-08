@@ -8,7 +8,6 @@ struct ChatMessage: Identifiable, Codable {
     let createdAt: Date
     var avatarUrl: String?
     var visionboardId: String?
-    var isCurrentUser: Bool = false
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -18,5 +17,9 @@ struct ChatMessage: Identifiable, Codable {
         case createdAt = "created_at"
         case avatarUrl = "avatar_url"
         case visionboardId = "visionboard_id"
+    }
+
+    func isCurrentUser(currentUserId: String) -> Bool {
+        return senderId == currentUserId
     }
 } 

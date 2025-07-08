@@ -65,33 +65,37 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        ForEach(manager.messages) { msg in
-                            if !msg.message.isEmpty {
-                                HStack(alignment: .bottom, spacing: 8) {
-                                    if msg.isCurrentUser {
-                                        Spacer()
-                                    }
-                                    if !msg.isCurrentUser {
-                                        avatarView(for: msg)
-                                    }
-                                    VStack(alignment: msg.isCurrentUser ? .trailing : .leading, spacing: 2) {
+                        ForEach(manager.messages.sorted(by: { $0.createdAt < $1.createdAt })) { msg in
+                            let isMine = msg.senderId == currentUserId
+                            HStack(alignment: .bottom, spacing: 8) {
+                                if isMine {
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 2) {
                                         Text(msg.message)
                                             .padding(10)
-                                            .background(msg.isCurrentUser ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
+                                            .background(Color.accentColor.opacity(0.2))
+                                            .foregroundColor(.primary)
                                             .cornerRadius(12)
                                         Text(msg.createdAt, style: .time)
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
                                     }
-                                    if msg.isCurrentUser {
-                                        avatarView(for: msg)
+                                } else {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(msg.message)
+                                            .padding(10)
+                                            .background(Color.gray.opacity(0.2))
+                                            .foregroundColor(.primary)
+                                            .cornerRadius(12)
+                                        Text(msg.createdAt, style: .time)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
                                     }
-                                    if !msg.isCurrentUser {
-                                        Spacer()
-                                    }
+                                    Spacer()
                                 }
-                                .id(msg.id)
                             }
+                            .padding(.horizontal)
+                            .id(msg.id)
                         }
                     }
                     .padding(.horizontal)
