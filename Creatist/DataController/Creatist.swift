@@ -452,8 +452,8 @@ class Creatist {
     }
 
     // MARK: - Drafts & Comments
-    func fetchDrafts(for visionboardId: UUID) async -> [Draft] {
-        let url = "/v1/visionboard/drafts?visionboard_id=\(visionboardId.uuidString)"
+    func fetchDrafts(forVisionBoardId visionboardId: UUID) async -> [Draft] {
+        let url = "/v1/visionboard/\(visionboardId.uuidString)/drafts"
         if let response: [Draft] = await NetworkManager.shared.get(url: url) {
             return response
         }
@@ -463,7 +463,7 @@ class Creatist {
     func uploadDraft(for visionboardId: UUID, mediaUrl: String, mediaType: String, description: String? = nil) async -> Draft? {
         guard let user = self.user else { return nil }
         var body: [String: Any] = [
-            "visionboard_id": visionboardId.uuidString,
+            "visionboard_id": visionboardId.uuidString, // <-- required by backend
             "user_id": user.id.uuidString,
             "media_url": mediaUrl,
             "media_type": mediaType
@@ -472,15 +472,15 @@ class Creatist {
             body["description"] = description
         }
         let data = try? JSONSerialization.data(withJSONObject: body)
-        let url = "/v1/visionboard/drafts"
+        let url = "/v1/visionboard/\(visionboardId.uuidString)/drafts"
         if let response: Draft = await NetworkManager.shared.post(url: url, body: data) {
             return response
         }
         return nil
     }
 
-    func fetchDraftComments(for draftId: UUID) async -> [DraftComment] {
-        let url = "/v1/visionboard/draft-comments?draft_id=\(draftId.uuidString)"
+    func fetchDraftComments(forDraftId draftId: UUID) async -> [DraftComment] {
+        let url = "/v1/visionboard/drafts/\(draftId.uuidString)/comments"
         if let response: [DraftComment] = await NetworkManager.shared.get(url: url) {
             return response
         }
@@ -490,16 +490,50 @@ class Creatist {
     func addDraftComment(draftId: UUID, comment: String) async -> DraftComment? {
         guard let user = self.user else { return nil }
         let body: [String: Any] = [
-            "draft_id": draftId.uuidString,
+            "draft_id": draftId.uuidString, // <-- required by backend
             "user_id": user.id.uuidString,
             "comment": comment
         ]
         let data = try? JSONSerialization.data(withJSONObject: body)
-        let url = "/v1/visionboard/draft-comments"
+        let url = "/v1/visionboard/drafts/\(draftId.uuidString)/comments"
         if let response: DraftComment = await NetworkManager.shared.post(url: url, body: data) {
             return response
         }
         return nil
+    }
+
+    // MARK: - Drafts & Comments (extended)
+    func updateDraft(draftId: UUID, mediaUrl: String?, mediaType: String?, description: String?) async -> Draft? {
+        var body: [String: Any] = [:]
+        if let mediaUrl = mediaUrl { body["media_url"] = mediaUrl }
+        if let mediaType = mediaType { body["media_type"] = mediaType }
+        if let description = description { body["description"] = description }
+        let data = try? JSONSerialization.data(withJSONObject: body)
+        let url = "/v1/visionboard/drafts/\(draftId.uuidString)"
+        if let response: Draft = await NetworkManager.shared.patch(url: url, body: data) {
+            return response
+        }
+        return nil
+    }
+
+    func deleteDraft(draftId: UUID) async -> Bool {
+        let url = "/v1/visionboard/drafts/\(draftId.uuidString)"
+        return await NetworkManager.shared.delete(url: url, body: nil)
+    }
+
+    func updateDraftComment(commentId: UUID, comment: String) async -> DraftComment? {
+        let body: [String: Any] = ["comment": comment]
+        let data = try? JSONSerialization.data(withJSONObject: body)
+        let url = "/v1/visionboard/draft-comments/\(commentId.uuidString)"
+        if let response: DraftComment = await NetworkManager.shared.patch(url: url, body: data) {
+            return response
+        }
+        return nil
+    }
+
+    func deleteDraftComment(commentId: UUID) async -> Bool {
+        let url = "/v1/visionboard/draft-comments/\(commentId.uuidString)"
+        return await NetworkManager.shared.delete(url: url, body: nil)
     }
 }
 

@@ -16,6 +16,10 @@ struct VisionInProgressView: View {
     @State private var draftPickerItem: PhotosPickerItem? = nil
     @State private var isUploadingDraft = false
     @State private var draftUploadError: String? = nil
+    // State for edit/delete
+    @State private var showEditDraftSheet = false
+    @State private var draftToDelete: Draft? = nil
+    @State private var showDeleteDraftAlert = false
 
     var body: some View {
         VStack(spacing: 32) {
@@ -73,31 +77,45 @@ struct VisionInProgressView: View {
                         }
                         // Draft thumbnails
                         ForEach(drafts) { draft in
-                            Button(action: {
-                                selectedDraft = draft
-                                showDraftPreview = true
-                            }) {
-                                ZStack {
-                                    if draft.mediaType == "video" {
-                                        Image(systemName: "video.fill")
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fit)
-                                            .frame(width: 56, height: 56)
-                                            .foregroundColor(.accentColor)
-                                    } else {
-                                        AsyncImage(url: URL(string: draft.mediaUrl)) { phase in
-                                            if let image = phase.image {
-                                                image.resizable().aspectRatio(contentMode: .fill)
-                                            } else if phase.error != nil {
-                                                Image(systemName: "doc")
-                                                    .resizable().aspectRatio(contentMode: .fit)
-                                                    .foregroundColor(.gray)
-                                            } else {
-                                                ProgressView()
+                            ZStack {
+                                Button(action: {
+                                    selectedDraft = draft
+                                    showDraftPreview = true
+                                }) {
+                                    ZStack {
+                                        if draft.mediaType == "video" {
+                                            Image(systemName: "video.fill")
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(width: 56, height: 56)
+                                                .foregroundColor(.accentColor)
+                                        } else {
+                                            AsyncImage(url: URL(string: draft.mediaUrl)) { phase in
+                                                if let image = phase.image {
+                                                    image.resizable().aspectRatio(contentMode: .fill)
+                                                } else if phase.error != nil {
+                                                    Image(systemName: "doc")
+                                                        .resizable().aspectRatio(contentMode: .fit)
+                                                        .foregroundColor(.gray)
+                                                } else {
+                                                    ProgressView()
+                                                }
                                             }
+                                            .frame(width: 56, height: 56)
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
                                         }
-                                        .frame(width: 56, height: 56)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    }
+                                }
+                                .contextMenu {
+                                    Button("Edit") {
+                                        selectedDraft = draft
+                                        showEditDraftSheet = true
+                                    }
+                                    Button(role: .destructive) {
+                                        draftToDelete = draft
+                                        showDeleteDraftAlert = true
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
                                     }
                                 }
                             }
@@ -114,7 +132,7 @@ struct VisionInProgressView: View {
         .padding()
         .onAppear {
             Task {
-                drafts = await Creatist.shared.fetchDrafts(for: board.id)
+                drafts = await Creatist.shared.fetchDrafts(forVisionBoardId: board.id)
             }
         }
         .onChange(of: draftPickerItem) { newItem in
@@ -132,7 +150,7 @@ struct VisionInProgressView: View {
                             fileName = UUID().uuidString + ".jpg"
                         }
                         let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
-                        let supabaseBucket = "profile-images" // or a drafts bucket if you have one
+                        let supabaseBucket = "drafts" // use the dedicated drafts bucket
                         let uploadPath = "\(supabaseBucket)/\(fileName)"
                         let uploadUrlString = "\(supabaseUrl)/storage/v1/object/\(uploadPath)"
                         var request = URLRequest(url: URL(string: uploadUrlString)!)
@@ -189,6 +207,29 @@ struct VisionInProgressView: View {
         .sheet(item: $selectedDraft) { draft in
             DraftPreviewSheet(draft: draft)
         }
+        .sheet(isPresented: $showEditDraftSheet) {
+            if let draft = selectedDraft {
+                EditDraftSheet(draft: draft) { updatedDraft in
+                    if let idx = drafts.firstIndex(where: { $0.id == updatedDraft.id }) {
+                        withAnimation { drafts[idx] = updatedDraft }
+                    }
+                    showEditDraftSheet = false
+                }
+            }
+        }
+        .alert("Delete Draft?", isPresented: $showDeleteDraftAlert, presenting: draftToDelete) { draft in
+            Button("Delete", role: .destructive) {
+                Task {
+                    if await Creatist.shared.deleteDraft(draftId: draft.id) {
+                        withAnimation { drafts.removeAll { $0.id == draft.id } }
+                    }
+                    showDeleteDraftAlert = false
+                }
+            }
+            Button("Cancel", role: .cancel) { showDeleteDraftAlert = false }
+        } message: { _ in
+            Text("Are you sure you want to delete this draft?")
+        }
     }
 }
 
@@ -199,6 +240,10 @@ struct DraftPreviewSheet: View {
     @State private var newComment: String = ""
     @State private var isLoading = false
     @State private var error: String? = nil
+    @State private var editingCommentId: UUID? = nil
+    @State private var editingCommentText: String = ""
+    @State private var commentToDelete: DraftComment? = nil
+    @State private var showDeleteCommentAlert = false
 
     var body: some View {
         NavigationView {
@@ -231,8 +276,43 @@ struct DraftPreviewSheet: View {
                             HStack(alignment: .top) {
                                 Text(comment.userId.uuidString.prefix(6))
                                     .font(.caption).bold().foregroundColor(.accentColor)
-                                Text(comment.comment)
-                                    .font(.body)
+                                if editingCommentId == comment.id {
+                                    TextField("Edit comment", text: $editingCommentText)
+                                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    Button("Save") {
+                                        Task {
+                                            isLoading = true
+                                            if let updated = await Creatist.shared.updateDraftComment(commentId: comment.id, comment: editingCommentText) {
+                                                if let idx = comments.firstIndex(where: { $0.id == updated.id }) {
+                                                    withAnimation { comments[idx] = updated }
+                                                }
+                                                editingCommentId = nil
+                                            }
+                                            isLoading = false
+                                        }
+                                    }
+                                    Button("Cancel") { editingCommentId = nil }
+                                } else {
+                                    Text(comment.comment)
+                                        .font(.body)
+                                    if comment.userId == Creatist.shared.user?.id {
+                                        Menu {
+                                            Button("Edit") {
+                                                editingCommentId = comment.id
+                                                editingCommentText = comment.comment
+                                            }
+                                            Button(role: .destructive) {
+                                                commentToDelete = comment
+                                                showDeleteCommentAlert = true
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        } label: {
+                                            Image(systemName: "ellipsis")
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                }
                                 Spacer()
                                 Text(comment.createdAt, style: .time)
                                     .font(.caption2).foregroundColor(.gray)
@@ -248,7 +328,7 @@ struct DraftPreviewSheet: View {
                             isLoading = true
                             error = nil
                             if let comment = await Creatist.shared.addDraftComment(draftId: draft.id, comment: newComment) {
-                                comments.append(comment)
+                                withAnimation { comments.append(comment) }
                                 newComment = ""
                             } else {
                                 error = "Failed to add comment."
@@ -270,9 +350,60 @@ struct DraftPreviewSheet: View {
             }
             .onAppear {
                 Task {
-                    comments = await Creatist.shared.fetchDraftComments(for: draft.id)
+                    comments = await Creatist.shared.fetchDraftComments(forDraftId: draft.id)
                 }
             }
+            .alert("Delete Comment?", isPresented: $showDeleteCommentAlert, presenting: commentToDelete) { comment in
+                Button("Delete", role: .destructive) {
+                    Task {
+                        if await Creatist.shared.deleteDraftComment(commentId: comment.id) {
+                            withAnimation { comments.removeAll { $0.id == comment.id } }
+                        }
+                        showDeleteCommentAlert = false
+                    }
+                }
+                Button("Cancel", role: .cancel) { showDeleteCommentAlert = false }
+            } message: { _ in
+                Text("Are you sure you want to delete this comment?")
+            }
+        }
+    }
+}
+
+// EditDraftSheet
+struct EditDraftSheet: View {
+    @State var draft: Draft
+    var onSave: (Draft) -> Void
+    @State private var newDescription: String = ""
+    @State private var isSaving = false
+    @Environment(\.dismiss) var dismiss
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Description")) {
+                    TextField("Description", text: $newDescription)
+                }
+                // Optionally add media replacement here
+            }
+            .navigationTitle("Edit Draft")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            isSaving = true
+                            if let updated = await Creatist.shared.updateDraft(draftId: draft.id, mediaUrl: nil, mediaType: nil, description: newDescription) {
+                                onSave(updated)
+                                dismiss()
+                            }
+                            isSaving = false
+                        }
+                    }.disabled(isSaving)
+                }
+            }
+            .onAppear { newDescription = draft.description ?? "" }
         }
     }
 } 
