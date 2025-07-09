@@ -78,4 +78,7 @@ playground.xcworkspace
 .AppleDesktop
 Network Trash Folder
 Temporary Items
-.apdisk 
+.apdisk .apdisk
+
+# Secrets
+Secrets.xcconfig 

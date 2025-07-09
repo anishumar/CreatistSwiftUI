@@ -118,6 +118,7 @@ struct Location: Codable, Sendable {
 struct User: Codable, Sendable {
     var id: UUID
     var name: String
+    var username: String?
     var email: String
     var password: String
     var profileImageUrl: String?
@@ -136,6 +137,7 @@ struct User: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id
         case name
+        case username
         case email
         case password
         case profileImageUrl = "profile_image_url"
@@ -1184,4 +1186,44 @@ struct IdentifiableUUID: Identifiable, Equatable {
 struct UserResponse: Codable {
     let message: String?
     let user: User
+} 
+
+struct Draft: Identifiable, Codable {
+    let id: UUID
+    let visionboardId: UUID
+    let userId: UUID
+    let mediaUrl: String
+    let mediaType: String?
+    let description: String?
+    let createdAt: Date
+    let updatedAt: Date?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case visionboardId = "visionboard_id"
+        case userId = "user_id"
+        case mediaUrl = "media_url"
+        case mediaType = "media_type"
+        case description
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct DraftComment: Identifiable, Codable {
+    let id: UUID
+    let draftId: UUID
+    let userId: UUID
+    let comment: String
+    let createdAt: Date
+    let updatedAt: Date?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case draftId = "draft_id"
+        case userId = "user_id"
+        case comment
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
 } 

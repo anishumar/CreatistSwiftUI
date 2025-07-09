@@ -413,6 +413,94 @@ class Creatist {
         print("❌ Failed to fetch users for vision board")
         return []
     }
+
+    // Update user profile via PATCH /v1/users
+    func updateUserProfile(_ user: User) async -> Bool {
+        guard let token = KeychainHelper.get("accessToken"),
+              let url = URL(string: NetworkManager.baseURL + "/v1/users") else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let body: [String: Any?] = [
+            "name": user.name,
+            "username": user.username,
+            "description": user.description,
+            "age": user.age,
+            "genres": user.genres?.map { $0.rawValue },
+            "payment_mode": user.paymentMode?.rawValue,
+            "work_mode": user.workMode?.rawValue,
+            "profile_image_url": user.profileImageUrl
+        ]
+        let filteredBody = body.compactMapValues { $0 }
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: filteredBody) else { return false }
+        request.httpBody = jsonData
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("Failed to update user: \(String(data: data, encoding: .utf8) ?? "nil")")
+                return false
+            }
+            // Optionally update Creatist.shared.user with the new data here
+            return true
+        } catch {
+            print("Error updating user: \(error)")
+            return false
+        }
+    }
+
+    // MARK: - Drafts & Comments
+    func fetchDrafts(for visionboardId: UUID) async -> [Draft] {
+        let url = "/v1/visionboard/drafts?visionboard_id=\(visionboardId.uuidString)"
+        if let response: [Draft] = await NetworkManager.shared.get(url: url) {
+            return response
+        }
+        return []
+    }
+
+    func uploadDraft(for visionboardId: UUID, mediaUrl: String, mediaType: String, description: String? = nil) async -> Draft? {
+        guard let user = self.user else { return nil }
+        var body: [String: Any] = [
+            "visionboard_id": visionboardId.uuidString,
+            "user_id": user.id.uuidString,
+            "media_url": mediaUrl,
+            "media_type": mediaType
+        ]
+        if let description = description {
+            body["description"] = description
+        }
+        let data = try? JSONSerialization.data(withJSONObject: body)
+        let url = "/v1/visionboard/drafts"
+        if let response: Draft = await NetworkManager.shared.post(url: url, body: data) {
+            return response
+        }
+        return nil
+    }
+
+    func fetchDraftComments(for draftId: UUID) async -> [DraftComment] {
+        let url = "/v1/visionboard/draft-comments?draft_id=\(draftId.uuidString)"
+        if let response: [DraftComment] = await NetworkManager.shared.get(url: url) {
+            return response
+        }
+        return []
+    }
+
+    func addDraftComment(draftId: UUID, comment: String) async -> DraftComment? {
+        guard let user = self.user else { return nil }
+        let body: [String: Any] = [
+            "draft_id": draftId.uuidString,
+            "user_id": user.id.uuidString,
+            "comment": comment
+        ]
+        let data = try? JSONSerialization.data(withJSONObject: body)
+        let url = "/v1/visionboard/draft-comments"
+        if let response: DraftComment = await NetworkManager.shared.post(url: url, body: data) {
+            return response
+        }
+        return nil
+    }
 }
 
 // MARK: - Notification ViewModel

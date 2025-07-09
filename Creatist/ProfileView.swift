@@ -8,6 +8,7 @@ struct ProfileView: View {
     @StateObject private var locationDelegate = LocationDelegate()
     @State private var locationManager = CLLocationManager()
     @State private var showLogoutAlert = false
+    @State private var showEditProfile = false
     
     var body: some View {
         NavigationStack {
@@ -32,6 +33,11 @@ struct ProfileView: View {
                                 Label("Update Location", systemImage: "location")
                             }
                         }
+                        Button {
+                            showEditProfile = true
+                        } label: {
+                            Label("Edit Profile", systemImage: "pencil")
+                        }
                         Button(role: .destructive) {
                             showLogoutAlert = true
                         } label: {
@@ -46,6 +52,9 @@ struct ProfileView: View {
             .alert("Are you sure you want to log out?", isPresented: $showLogoutAlert) {
                 Button("Log Out", role: .destructive) { logout() }
                 Button("Cancel", role: .cancel) { }
+            }
+            .sheet(isPresented: $showEditProfile) {
+                EditProfileView()
             }
         }
     }
