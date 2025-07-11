@@ -1111,3 +1111,31 @@ extension Creatist {
         }
     }
 }
+
+// MARK: - Feed Fetching (Trending & Following)
+
+extension Creatist {
+    // Trending feed with pagination
+    func fetchTrendingPosts(limit: Int = 10, cursor: String? = nil) async -> PaginatedPosts {
+        var url = "/posts/trending?limit=\(limit)"
+        if let cursor = cursor {
+            url += "&cursor=\(cursor)"
+        }
+        if let response: PaginatedPosts = await NetworkManager.shared.get(url: url) {
+            return response
+        }
+        return PaginatedPosts(posts: [], nextCursor: nil)
+    }
+
+    // Following feed with pagination
+    func fetchFollowingFeed(limit: Int = 10, cursor: String? = nil) async -> PaginatedPosts {
+        var url = "/posts/feed?limit=\(limit)"
+        if let cursor = cursor {
+            url += "&cursor=\(cursor)"
+        }
+        if let response: PaginatedPosts = await NetworkManager.shared.get(url: url) {
+            return response
+        }
+        return PaginatedPosts(posts: [], nextCursor: nil)
+    }
+}

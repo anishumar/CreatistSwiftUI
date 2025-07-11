@@ -1228,44 +1228,80 @@ struct DraftComment: Identifiable, Codable {
     }
 } 
 
-// MARK: - Post System Models
+// MARK: - Feed Post Model for FeedView (Backend-Compatible)
 
-struct Post: Codable, Identifiable {
-    enum Status: String, Codable { case `public`, privatePost = "private", draft, archived }
-    enum Visibility: String, Codable { case `public`, privatePost = "private", followers }
+struct PostWithDetails: Identifiable, Codable {
     let id: UUID
     let userId: UUID
     let caption: String?
     let isCollaborative: Bool
-    let status: Status
-    let visibility: Visibility
+    let status: String
+    let visibility: String
     let sharedFromPostId: UUID?
     let createdAt: Date
     let updatedAt: Date
     let deletedAt: Date?
     let media: [PostMedia]
-    let tags: [PostTag]
+    let tags: [String]
     let collaborators: [PostCollaborator]
-    let likesCount: Int?
-    let commentsCount: Int?
+    let likeCount: Int
+    let commentCount: Int
+    let viewCount: Int
+    let authorName: String?
+    let topComments: [PostComment]
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case caption
+        case isCollaborative = "is_collaborative"
+        case status
+        case visibility
+        case sharedFromPostId = "shared_from_post_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+        case media
+        case tags
+        case collaborators
+        case likeCount = "like_count"
+        case commentCount = "comment_count"
+        case viewCount = "view_count"
+        case authorName = "author_name"
+        case topComments = "top_comments"
+    }
 }
 
-struct PostMedia: Codable, Identifiable {
-    enum MediaType: String, Codable { case image, video }
+struct PostMedia: Identifiable, Codable {
     let id: UUID
     let postId: UUID
     let url: String
-    let type: MediaType
+    let type: String
     let order: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case postId = "post_id"
+        case url
+        case type
+        case order
+    }
 }
 
-struct PostLike: Codable {
-    let userId: UUID
+struct PostCollaborator: Identifiable, Codable {
     let postId: UUID
-    let createdAt: Date
+    let userId: UUID
+    let role: String
+    
+    enum CodingKeys: String, CodingKey {
+        case postId = "post_id"
+        case userId = "user_id"
+        case role
+    }
+    var id: UUID { userId }
 }
 
-struct PostComment: Codable, Identifiable {
+struct PostComment: Identifiable, Codable {
     let id: UUID
     let postId: UUID
     let userId: UUID
@@ -1273,24 +1309,38 @@ struct PostComment: Codable, Identifiable {
     let parentCommentId: UUID?
     let createdAt: Date
     let deletedAt: Date?
-    let replies: [PostComment]? // For nested threads
-}
+    let replies: [PostComment]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case postId = "post_id"
+        case userId = "user_id"
+        case content
+        case parentCommentId = "parent_comment_id"
+        case createdAt = "created_at"
+        case deletedAt = "deleted_at"
+        case replies
+    }
+} 
 
-struct PostTag: Codable {
-    let postId: UUID
+// MARK: - Post Like, View, Tag, Hashtag Models (Backend-Compatible)
+
+struct Hashtag: Identifiable, Codable {
+    let id: UUID
     let tag: String
 }
 
-struct PostCollaborator: Codable {
-    enum Role: String, Codable { case author, editor, invited, collaborator }
+struct PostHashtag: Codable {
     let postId: UUID
-    let userId: UUID
-    let role: Role
-}
+    let hashtagId: UUID
+    
+    enum CodingKeys: String, CodingKey {
+        case postId = "post_id"
+        case hashtagId = "hashtag_id"
+    }
+} 
 
-struct PostView: Codable, Identifiable {
-    let id: UUID
-    let postId: UUID
-    let userId: UUID?
-    let viewedAt: Date
+struct PaginatedPosts: Codable {
+    let posts: [PostWithDetails]
+    let nextCursor: String?
 } 
