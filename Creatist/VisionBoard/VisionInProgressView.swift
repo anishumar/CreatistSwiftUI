@@ -20,6 +20,11 @@ struct VisionInProgressView: View {
     @State private var showEditDraftSheet = false
     @State private var draftToDelete: Draft? = nil
     @State private var showDeleteDraftAlert = false
+    // Multi-select state
+    @State private var isSelectingDrafts = false
+    @State private var selectedDrafts: Set<UUID> = []
+    @State private var showCreatePostSheet = false
+    @State private var boardGenres: [String] = []
 
     var body: some View {
         VStack(spacing: 32) {
@@ -78,47 +83,99 @@ struct VisionInProgressView: View {
                         // Draft thumbnails
                         ForEach(drafts) { draft in
                             ZStack {
-                                Button(action: {
-                                    selectedDraft = draft
-                                    showDraftPreview = true
-                                }) {
-                                    ZStack {
-                                        if draft.mediaType == "video" {
-                                            Image(systemName: "video.fill")
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fit)
-                                                .frame(width: 56, height: 56)
-                                                .foregroundColor(.accentColor)
+                                if isSelectingDrafts {
+                                    Button(action: {
+                                        if selectedDrafts.contains(draft.id) {
+                                            selectedDrafts.remove(draft.id)
                                         } else {
-                                            AsyncImage(url: URL(string: draft.mediaUrl)) { phase in
-                                                if let image = phase.image {
-                                                    image.resizable().aspectRatio(contentMode: .fill)
-                                                } else if phase.error != nil {
-                                                    Image(systemName: "doc")
-                                                        .resizable().aspectRatio(contentMode: .fit)
-                                                        .foregroundColor(.gray)
-                                                } else {
-                                                    ProgressView()
+                                            selectedDrafts.insert(draft.id)
+                                        }
+                                    }) {
+                                        ZStack {
+                                            if draft.mediaType == "video" {
+                                                Image(systemName: "video.fill")
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fit)
+                                                    .frame(width: 56, height: 56)
+                                                    .foregroundColor(.accentColor)
+                                            } else {
+                                                AsyncImage(url: URL(string: draft.mediaUrl)) { phase in
+                                                    if let image = phase.image {
+                                                        image.resizable().aspectRatio(contentMode: .fill)
+                                                    } else if phase.error != nil {
+                                                        Image(systemName: "doc")
+                                                            .resizable().aspectRatio(contentMode: .fit)
+                                                            .foregroundColor(.gray)
+                                                    } else {
+                                                        ProgressView()
+                                                    }
                                                 }
+                                                .frame(width: 56, height: 56)
+                                                .clipShape(RoundedRectangle(cornerRadius: 8))
                                             }
-                                            .frame(width: 56, height: 56)
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                            if selectedDrafts.contains(draft.id) {
+                                                RoundedRectangle(cornerRadius: 8)
+                                                    .fill(Color.accentColor.opacity(0.4))
+                                                    .frame(width: 56, height: 56)
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundColor(.white)
+                                                    .background(Circle().fill(Color.accentColor))
+                                                    .offset(x: 18, y: -18)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Button(action: {
+                                        selectedDraft = draft
+                                        showDraftPreview = true
+                                    }) {
+                                        ZStack {
+                                            if draft.mediaType == "video" {
+                                                Image(systemName: "video.fill")
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fit)
+                                                    .frame(width: 56, height: 56)
+                                                    .foregroundColor(.accentColor)
+                                            } else {
+                                                AsyncImage(url: URL(string: draft.mediaUrl)) { phase in
+                                                    if let image = phase.image {
+                                                        image.resizable().aspectRatio(contentMode: .fill)
+                                                    } else if phase.error != nil {
+                                                        Image(systemName: "doc")
+                                                            .resizable().aspectRatio(contentMode: .fit)
+                                                            .foregroundColor(.gray)
+                                                    } else {
+                                                        ProgressView()
+                                                    }
+                                                }
+                                                .frame(width: 56, height: 56)
+                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                            }
+                                        }
+                                    }
+                                    .contextMenu {
+                                        Button("Edit") {
+                                            selectedDraft = draft
+                                            showEditDraftSheet = true
+                                        }
+                                        Button(role: .destructive) {
+                                            draftToDelete = draft
+                                            showDeleteDraftAlert = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
                                         }
                                     }
                                 }
-                                .contextMenu {
-                                    Button("Edit") {
-                                        selectedDraft = draft
-                                        showEditDraftSheet = true
-                                    }
-                                    Button(role: .destructive) {
-                                        draftToDelete = draft
-                                        showDeleteDraftAlert = true
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
+                            }
+                            .simultaneousGesture(LongPressGesture().onEnded { _ in
+                                if !isSelectingDrafts {
+                                    print("[DEBUG] Long-press triggered for draft \(draft.id)")
+                                    withAnimation {
+                                        isSelectingDrafts = true
+                                        selectedDrafts = [draft.id]
                                     }
                                 }
-                            }
+                            })
                         }
                     }
                     .padding(.vertical, 4)
@@ -128,6 +185,68 @@ struct VisionInProgressView: View {
                 }
             }
             Spacer()
+            // Multi-select toolbar/floating button
+            if isSelectingDrafts && !selectedDrafts.isEmpty {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        showCreatePostSheet = true
+                    }) {
+                        Label("Post", systemImage: "paperplane.fill")
+                            .font(.title2.bold())
+                            .padding()
+                            .background(Capsule().fill(Color.accentColor))
+                            .foregroundColor(.white)
+                            .shadow(radius: 4)
+                    }
+                    .padding(.trailing, 12)
+                    // --- New Delete Button ---
+                    Button(action: {
+                        Task {
+                            isUploadingDraft = true
+                            let idsToDelete = selectedDrafts
+                            for draftId in idsToDelete {
+                                if await Creatist.shared.deleteDraft(draftId: draftId) {
+                                    withAnimation { drafts.removeAll { $0.id == draftId } }
+                                }
+                            }
+                            isUploadingDraft = false
+                            withAnimation {
+                                isSelectingDrafts = false
+                                selectedDrafts.removeAll()
+                            }
+                        }
+                    }) {
+                        Label("Delete", systemImage: "trash")
+                            .font(.title2.bold())
+                            .padding()
+                            .background(Capsule().fill(Color.red))
+                            .foregroundColor(.white)
+                            .shadow(radius: 4)
+                    }
+                    .padding(.trailing, 24)
+                    .disabled(isUploadingDraft)
+                    if isUploadingDraft {
+                        ProgressView().padding(.trailing, 8)
+                    }
+                }
+                .padding(.bottom, 12)
+                .transition(.move(edge: .bottom))
+            }
+            if isSelectingDrafts {
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        withAnimation {
+                            isSelectingDrafts = false
+                            selectedDrafts.removeAll()
+                        }
+                    }
+                    .padding(.trailing, 24)
+                    .padding(.bottom, 4)
+                }
+                .transition(.move(edge: .bottom))
+            }
         }
         .padding()
         .onAppear {
@@ -141,35 +260,16 @@ struct VisionInProgressView: View {
                     isUploadingDraft = true
                     draftUploadError = nil
                     if let data = try? await newItem.loadTransferable(type: Data.self) {
-                        let fileName: String
                         var mediaType: String = "image"
                         if let type = newItem.supportedContentTypes.first, type.conforms(to: .movie) {
-                            fileName = UUID().uuidString + ".mov"
                             mediaType = "video"
-                        } else {
-                            fileName = UUID().uuidString + ".jpg"
                         }
-                        let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
-                        let supabaseBucket = "drafts" // use the dedicated drafts bucket
-                        let uploadPath = "\(supabaseBucket)/\(fileName)"
-                        let uploadUrlString = "\(supabaseUrl)/storage/v1/object/\(uploadPath)"
-                        var request = URLRequest(url: URL(string: uploadUrlString)!)
-                        request.httpMethod = "POST"
-                        request.setValue("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk", forHTTPHeaderField: "Authorization")
-                        request.setValue(mediaType == "video" ? "video/quicktime" : "image/jpeg", forHTTPHeaderField: "Content-Type")
-                        request.httpBody = data
-                        do {
-                            let (respData, resp) = try await URLSession.shared.data(for: request)
-                            if let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200 || httpResp.statusCode == 201 {
-                                let publicUrl = "\(supabaseUrl)/storage/v1/object/public/\(supabaseBucket)/\(fileName)"
-                                if let draft = await Creatist.shared.uploadDraft(for: board.id, mediaUrl: publicUrl, mediaType: mediaType) {
-                                    drafts.append(draft)
-                                }
-                            } else {
-                                draftUploadError = "Failed to upload draft."
+                        if let publicUrl = await Creatist.shared.uploadDraftMedia(data: data, mediaType: mediaType) {
+                            if let draft = await Creatist.shared.uploadDraft(for: board.id, mediaUrl: publicUrl, mediaType: mediaType) {
+                                drafts.append(draft)
                             }
-                        } catch {
-                            draftUploadError = "Upload error: \(error.localizedDescription)"
+                        } else {
+                            draftUploadError = "Failed to upload draft."
                         }
                     }
                     isUploadingDraft = false
@@ -229,6 +329,24 @@ struct VisionInProgressView: View {
             Button("Cancel", role: .cancel) { showDeleteDraftAlert = false }
         } message: { _ in
             Text("Are you sure you want to delete this draft?")
+        }
+        .sheet(isPresented: $showCreatePostSheet, onDismiss: {
+            withAnimation {
+                isSelectingDrafts = false
+                selectedDrafts.removeAll()
+            }
+        }) {
+            let selected = drafts.filter { selectedDrafts.contains($0.id) }
+            CreatePostSheet(drafts: selected, genres: boardGenres) {
+                showCreatePostSheet = false
+            }
+        }
+        .onChange(of: showCreatePostSheet) { show in
+            if show {
+                Task {
+                    boardGenres = await Creatist.shared.fetchGenresForVisionBoard(board.id)
+                }
+            }
         }
     }
 }
@@ -404,6 +522,158 @@ struct EditDraftSheet: View {
                 }
             }
             .onAppear { newDescription = draft.description ?? "" }
+        }
+    }
+}
+
+// CreatePostSheet
+struct CreatePostSheet: View {
+    let drafts: [Draft]
+    let genres: [String]
+    var onPost: () -> Void
+    @State private var title: String = ""
+    @State private var description: String = ""
+    @State private var tags: String = ""
+    @Environment(\.dismiss) var dismiss
+    @State private var isPosting = false
+    @State private var postError: String? = nil
+    var collaborators: [UUID] {
+        Array(Set(drafts.map { $0.userId }))
+    }
+    var mediaUrls: [String] {
+        drafts.map { $0.mediaUrl }
+    }
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Create Post").font(.largeTitle).bold()
+                    // Collaborators
+                    if collaborators.count > 1 {
+                        HStack(spacing: 12) {
+                            ForEach(collaborators, id: \.self) { userId in
+                                Circle().fill(Color.accentColor.opacity(0.2)).frame(width: 40, height: 40)
+                                // TODO: Replace with user image if available
+                                Text(userId.uuidString.prefix(6)).font(.caption)
+                            }
+                        }
+                        Text("Collaborators").font(.caption).foregroundColor(.gray)
+                    }
+                    // Media preview
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(mediaUrls, id: \.self) { url in
+                                AsyncImage(url: URL(string: url)) { phase in
+                                    if let image = phase.image {
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    } else if phase.error != nil {
+                                        Image(systemName: "doc").resizable().aspectRatio(contentMode: .fit).foregroundColor(.gray)
+                                    } else {
+                                        ProgressView()
+                                    }
+                                }
+                                .frame(width: 80, height: 80)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }
+                    // Title
+                    TextField("Title", text: $title)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    // Description
+                    TextField("Description", text: $description)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    // Genres (from vision board)
+                    if !genres.isEmpty {
+                        Text("Genres: " + genres.joined(separator: ", "))
+                            .font(.subheadline).foregroundColor(.secondary)
+                    }
+                    // Tags
+                    TextField("Tags (comma separated)", text: $tags)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    if let postError = postError {
+                        Text(postError).foregroundColor(.red).font(.caption)
+                    }
+                    if isPosting {
+                        HStack { Spacer(); ProgressView(); Spacer() }
+                    }
+                }
+                .padding()
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Post") {
+                        Task {
+                            isPosting = true
+                            postError = nil
+                            let newPostId = UUID()
+                            guard let userId = Creatist.shared.user?.id else {
+                                postError = "User not found"; isPosting = false; return
+                            }
+                            // 1. Upload all media to Supabase Storage (if not already in posts bucket)
+                            var mediaArray: [PostMediaCreate] = []
+                            for (idx, draft) in drafts.enumerated() {
+                                let url = draft.mediaUrl
+                                let isAlreadyInPostsBucket = url.contains("/storage/v1/object/public/posts/")
+                                var finalUrl: String? = url
+                                var mediaType: String? = draft.mediaType
+                                if !isAlreadyInPostsBucket {
+                                    do {
+                                        let (data, _) = try await URLSession.shared.data(from: URL(string: url)!)
+                                        if let uploadedUrl = await Creatist.shared.uploadPostMedia(data: data, mediaType: mediaType ?? "image", userId: userId, postId: newPostId) {
+                                            finalUrl = uploadedUrl
+                                        } else {
+                                            postError = "Failed to upload media: \(url)"
+                                            isPosting = false
+                                            return
+                                        }
+                                    } catch {
+                                        postError = "Upload error: \(error.localizedDescription)"
+                                        isPosting = false
+                                        return
+                                    }
+                                }
+                                guard let mediaType = mediaType, let finalUrl = finalUrl else {
+                                    postError = "Missing media type or URL"
+                                    isPosting = false
+                                    return
+                                }
+                                mediaArray.append(PostMediaCreate(url: finalUrl, type: mediaType, order: idx))
+                            }
+                            // 2. Build collaborators array
+                            let visionboardId = drafts.first?.visionboardId
+                            var collaboratorsArray: [PostCollaboratorCreate] = []
+                            if let visionboardId = visionboardId {
+                                collaboratorsArray = await Creatist.shared.buildCollaboratorsForVisionboard(visionboardId: visionboardId)
+                            }
+                            let isCollaborative = !collaboratorsArray.isEmpty
+                            // 3. Build tags array
+                            let tagsArray = tags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                            // 4. Call createPost
+                            let postId = await Creatist.shared.createPost(
+                                caption: title.isEmpty ? nil : title,
+                                media: mediaArray,
+                                tags: tagsArray,
+                                status: "public",
+                                sharedFromPostId: nil,
+                                visionboardId: visionboardId
+                            )
+                            if let postId = postId {
+                                isPosting = false
+                                onPost()
+                                dismiss()
+                            } else {
+                                postError = "Failed to create post."
+                                isPosting = false
+                            }
+                        }
+                    }.disabled(title.isEmpty || mediaUrls.isEmpty || isPosting)
+                }
+            }
         }
     }
 } 

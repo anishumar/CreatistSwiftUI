@@ -906,4 +906,208 @@ extension Creatist {
             return false
         }
     }
+
+    // Fetch all genre names for a vision board
+    func fetchGenresForVisionBoard(_ visionboardId: UUID) async -> [String] {
+        guard let token = KeychainHelper.get("accessToken"), !token.isEmpty else { return [] }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/\(visionboardId.uuidString.lowercased())/with-genres") else { return [] }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return [] }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let dateString = try container.decode(String.self)
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted.")
+            }
+            struct GenresResponse: Codable { let visionboard: VisionBoardWithGenres }
+            let result = try decoder.decode(GenresResponse.self, from: data)
+            return result.visionboard.genres.map { $0.name }
+        } catch {
+            print("[DEBUG] Error fetching genres for vision board: \(error)")
+            return []
+        }
+    }
+
+    /// Builds the collaborators array for a visionboard by fetching all collaborators (with their roles) from the new endpoint.
+    func buildCollaboratorsForVisionboard(visionboardId: UUID) async -> [PostCollaboratorCreate] {
+        guard let token = KeychainHelper.get("accessToken"), !token.isEmpty else { return [] }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/\(visionboardId.uuidString)/collaborators") else { return [] }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return [] }
+            
+            // Decode the raw response to get user_id and role
+            struct CollaboratorResponse: Codable {
+                let user_id: UUID
+                let role: String
+            }
+            
+            let collaboratorsResponse = try JSONDecoder().decode([CollaboratorResponse].self, from: data)
+            
+            // Map genre-based roles to expected post collaborator roles
+            return collaboratorsResponse.map { collaborator in
+                let mappedRole: String
+                switch collaborator.role.lowercased() {
+                case "author", "editor", "invited", "collaborator":
+                    // These are already valid post collaborator roles
+                    mappedRole = collaborator.role.lowercased()
+                default:
+                    // Map genre names (like "videographer", "actor", etc.) to "collaborator"
+                    mappedRole = "collaborator"
+                }
+                
+                return PostCollaboratorCreate(user_id: collaborator.user_id, role: mappedRole)
+            }
+        } catch {
+            print("[DEBUG] Error fetching collaborators for visionboard: \(error)")
+            return []
+        }
+    }
+}
+
+// MARK: - Post Creation API Integration
+
+struct PostMediaCreate: Codable {
+    let url: String
+    let type: String // "image" or "video"
+    let order: Int
+}
+
+struct PostCollaboratorCreate: Codable {
+    let user_id: UUID
+    let role: String // "author", "editor", etc.
+}
+
+struct PostCreate: Codable {
+    let caption: String?
+    let media: [PostMediaCreate]
+    let tags: [String]
+    let status: String
+    let shared_from_post_id: UUID?
+    let visionboard_id: UUID?
+}
+
+@MainActor
+extension Creatist {
+    func createPost(
+        caption: String?,
+        media: [PostMediaCreate],
+        tags: [String],
+        status: String = "public",
+        sharedFromPostId: UUID? = nil,
+        visionboardId: UUID? = nil
+    ) async -> UUID? {
+        guard let token = KeychainHelper.get("accessToken") else { return nil }
+        let post = PostCreate(
+            caption: caption,
+            media: media,
+            tags: tags,
+            status: status,
+            shared_from_post_id: sharedFromPostId,
+            visionboard_id: visionboardId
+        )
+        guard let data = try? JSONEncoder().encode(post) else { return nil }
+        var request = URLRequest(url: URL(string: NetworkManager.baseURL + "/posts")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = data
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("Failed to create post: \(String(data: data, encoding: .utf8) ?? "nil")")
+                return nil
+            }
+            let result = try JSONDecoder().decode([String: String].self, from: data)
+            return UUID(uuidString: result["post_id"] ?? "")
+        } catch {
+            print("Error creating post: \(error)")
+            return nil
+        }
+    }
+
+    /// Uploads media for a draft to Supabase Storage and returns the public URL or nil on failure.
+    func uploadDraftMedia(data: Data, mediaType: String) async -> String? {
+        let maxSize: Int = 25 * 1024 * 1024 // 25 MB
+        if data.count > maxSize {
+            print("[Creatist] Draft media file is too large (\(data.count) bytes). Max allowed is \(maxSize) bytes.")
+            return nil
+        }
+        let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
+        let supabaseBucket = "drafts"
+        let ext = (mediaType == "video") ? ".mov" : ".jpg"
+        let fileName = UUID().uuidString + ext
+        let uploadPath = "\(supabaseBucket)/\(fileName)"
+        let uploadUrlString = "\(supabaseUrl)/storage/v1/object/\(uploadPath)"
+        guard let uploadUrl = URL(string: uploadUrlString) else { return nil }
+        var request = URLRequest(url: uploadUrl)
+        request.httpMethod = "PUT"
+        let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk"
+        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(mediaType == "video" ? "video/quicktime" : "image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        do {
+            let (respData, resp) = try await URLSession.shared.data(for: request)
+            if let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200 || httpResp.statusCode == 201 {
+                let publicUrl = "\(supabaseUrl)/storage/v1/object/public/\(supabaseBucket)/\(fileName)"
+                return publicUrl
+            } else {
+                print("[Creatist] Failed to upload draft media. Status: \((resp as? HTTPURLResponse)?.statusCode ?? -1)")
+                return nil
+            }
+        } catch {
+            print("[Creatist] Upload draft media error: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Uploads media for a post to Supabase Storage and returns the public URL or nil on failure.
+    func uploadPostMedia(data: Data, mediaType: String, userId: UUID, postId: UUID) async -> String? {
+        let maxSize: Int = 25 * 1024 * 1024 // 25 MB for self posts
+        if data.count > maxSize {
+            print("[Creatist] Post media file is too large (\(data.count) bytes). Max allowed is \(maxSize) bytes.")
+            return nil
+        }
+        let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
+        let ext = (mediaType == "video") ? ".mov" : ".jpg"
+        let fileName = UUID().uuidString + ext
+        let uploadPath = "posts/\(userId.uuidString)/\(postId.uuidString)/\(fileName)"
+        let uploadUrlString = "\(supabaseUrl)/storage/v1/object/\(uploadPath)"
+        guard let uploadUrl = URL(string: uploadUrlString) else { return nil }
+        var request = URLRequest(url: uploadUrl)
+        request.httpMethod = "PUT"
+        let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk"
+        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(mediaType == "video" ? "video/quicktime" : "image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        do {
+            let (respData, resp) = try await URLSession.shared.data(for: request)
+            if let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200 || httpResp.statusCode == 201 {
+                let publicUrl = "\(supabaseUrl)/storage/v1/object/public/posts/\(userId.uuidString)/\(postId.uuidString)/\(fileName)"
+                return publicUrl
+            } else {
+                print("[Creatist] Failed to upload post media. Status: \((resp as? HTTPURLResponse)?.statusCode ?? -1)")
+                return nil
+            }
+        } catch {
+            print("[Creatist] Upload post media error: \(error.localizedDescription)")
+            return nil
+        }
+    }
 }

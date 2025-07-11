@@ -1227,3 +1227,70 @@ struct DraftComment: Identifiable, Codable {
         case updatedAt = "updated_at"
     }
 } 
+
+// MARK: - Post System Models
+
+struct Post: Codable, Identifiable {
+    enum Status: String, Codable { case `public`, privatePost = "private", draft, archived }
+    enum Visibility: String, Codable { case `public`, privatePost = "private", followers }
+    let id: UUID
+    let userId: UUID
+    let caption: String?
+    let isCollaborative: Bool
+    let status: Status
+    let visibility: Visibility
+    let sharedFromPostId: UUID?
+    let createdAt: Date
+    let updatedAt: Date
+    let deletedAt: Date?
+    let media: [PostMedia]
+    let tags: [PostTag]
+    let collaborators: [PostCollaborator]
+    let likesCount: Int?
+    let commentsCount: Int?
+}
+
+struct PostMedia: Codable, Identifiable {
+    enum MediaType: String, Codable { case image, video }
+    let id: UUID
+    let postId: UUID
+    let url: String
+    let type: MediaType
+    let order: Int
+}
+
+struct PostLike: Codable {
+    let userId: UUID
+    let postId: UUID
+    let createdAt: Date
+}
+
+struct PostComment: Codable, Identifiable {
+    let id: UUID
+    let postId: UUID
+    let userId: UUID
+    let content: String
+    let parentCommentId: UUID?
+    let createdAt: Date
+    let deletedAt: Date?
+    let replies: [PostComment]? // For nested threads
+}
+
+struct PostTag: Codable {
+    let postId: UUID
+    let tag: String
+}
+
+struct PostCollaborator: Codable {
+    enum Role: String, Codable { case author, editor, invited, collaborator }
+    let postId: UUID
+    let userId: UUID
+    let role: Role
+}
+
+struct PostView: Codable, Identifiable {
+    let id: UUID
+    let postId: UUID
+    let userId: UUID?
+    let viewedAt: Date
+} 

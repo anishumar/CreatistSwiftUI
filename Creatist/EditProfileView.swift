@@ -254,7 +254,7 @@ struct EditProfileView: View {
             return nil
         }
         var request = URLRequest(url: uploadUrl)
-        request.httpMethod = "POST"
+        request.httpMethod = "PUT"
         request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
         request.httpBody = imageData
