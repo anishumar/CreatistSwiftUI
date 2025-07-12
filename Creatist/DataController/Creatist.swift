@@ -1138,4 +1138,46 @@ extension Creatist {
         }
         return PaginatedPosts(posts: [], nextCursor: nil)
     }
+
+    // Fetch a user by their UUID
+    func fetchUserById(userId: UUID) async -> User? {
+        let url = "/v1/users/\(userId.uuidString)"
+        if let response: UserResponse = await NetworkManager.shared.get(url: url) {
+            return response.user
+        }
+        return nil
+    }
+
+    // Like a post
+    func likePost(postId: UUID) async -> Bool {
+        let url = "/posts/\(postId.uuidString)/like"
+        let response: Response? = await NetworkManager.shared.post(url: url, body: nil)
+        return response?.message == "Liked"
+    }
+
+    // Unlike a post
+    func unlikePost(postId: UUID) async -> Bool {
+        let url = "/posts/\(postId.uuidString)/like"
+        return await NetworkManager.shared.delete(url: url, body: nil)
+    }
+
+    // Add a comment
+    func addComment(postId: UUID, content: String) async -> PostComment? {
+        let url = "/posts/\(postId.uuidString)/comments"
+        let comment = ["content": content]
+        let data = try? JSONSerialization.data(withJSONObject: comment)
+        return await NetworkManager.shared.post(url: url, body: data)
+    }
+
+    // Get comments
+    func getComments(postId: UUID, limit: Int = 10, cursor: String? = nil) async -> [PostComment] {
+        var url = "/posts/\(postId.uuidString)/comments?limit=\(limit)"
+        if let cursor = cursor {
+            url += "&cursor=\(cursor)"
+        }
+        if let comments: [PostComment] = await NetworkManager.shared.get(url: url) {
+            return comments
+        }
+        return []
+    }
 }

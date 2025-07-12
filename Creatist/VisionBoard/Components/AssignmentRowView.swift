@@ -28,8 +28,8 @@ struct AssignmentRowView: View {
                         if let _ = UIImage(named: "defaultAvatar") {
                             Image("defaultAvatar").resizable().aspectRatio(contentMode: .fill)
                         } else {
-                            Image(systemName: "person.crop.circle.fill").foregroundColor(.gray)
-                        }
+                        Image(systemName: "person.crop.circle.fill").foregroundColor(.gray)
+                    }
                     }
                     .frame(width: 32, height: 32)
                     .clipShape(Circle())
@@ -38,14 +38,14 @@ struct AssignmentRowView: View {
                         Image("defaultAvatar")
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 32, height: 32)
-                            .clipShape(Circle())
-                    } else {
-                        Image(systemName: "person.crop.circle.fill")
-                            .resizable()
-                            .foregroundColor(.gray)
-                            .frame(width: 32, height: 32)
-                            .clipShape(Circle())
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+                } else {
+                    Image(systemName: "person.crop.circle.fill")
+                        .resizable()
+                        .foregroundColor(.gray)
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
                     }
                 }
                 Text(user.name)

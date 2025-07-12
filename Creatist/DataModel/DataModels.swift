@@ -1007,8 +1007,8 @@ struct AnyCodable: Codable {
     
     init<T>(_ value: T?) {
         self.value = value ?? ()
-    }
-    
+}
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let intVal = try? container.decode(Int.self) { value = intVal; return }
@@ -1017,7 +1017,7 @@ struct AnyCodable: Codable {
         if let stringVal = try? container.decode(String.self) { value = stringVal; return }
         if let dictVal = try? container.decode([String: AnyCodable].self) { value = dictVal; return }
         if let arrVal = try? container.decode([AnyCodable].self) { value = arrVal; return }
-        value = ()
+            value = ()
     }
     
     func encode(to encoder: Encoder) throws {
