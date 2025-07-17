@@ -6,153 +6,142 @@ struct UserProfileView: View {
     @State private var followersCount: Int = 0
     @State private var followingCount: Int = 0
     @State private var showDirectChat = false
-    
+
     var user: User? {
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
         viewModel.nearbyUsers.first(where: { $0.id == userId })
     }
-    
+
     var body: some View {
-        VStack(spacing: 0) {
-            if let user = user {
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                gradient: Gradient(colors: [Color.black, Color(red: 0.2, green: 0, blue: 0.1)]),
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            ScrollView {
                 VStack(spacing: 16) {
-                    // User image
-                    if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
-                        AsyncImage(url: url) { phase in
-                            if let image = phase.image {
-                                image.resizable().aspectRatio(contentMode: .fill)
-                            } else if phase.error != nil {
-                                Image(systemName: "person.crop.circle.fill")
-                                    .resizable().aspectRatio(contentMode: .fill)
-                                    .foregroundColor(.gray)
+                    if let user = user {
+                        Spacer(minLength: 24)
+                        // Profile image
+                        ZStack {
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 110, height: 110)
+                            if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
+                                AsyncImage(url: url) { phase in
+                                    if let image = phase.image {
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    } else if phase.error != nil {
+                                        Image(systemName: "person.crop.circle.fill")
+                                            .resizable().aspectRatio(contentMode: .fill)
+                                            .foregroundColor(.gray)
+                                    } else {
+                                        ProgressView()
+                                    }
+                                }
+                                .frame(width: 100, height: 100)
+                                .clipShape(Circle())
                             } else {
-                                ProgressView()
+                                Image(systemName: "person.crop.circle.fill")
+                                    .resizable()
+                                    .frame(width: 100, height: 100)
+                                    .clipShape(Circle())
+                                    .foregroundColor(.gray)
                             }
                         }
-                        .frame(width: 100, height: 100)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white, lineWidth: 4))
-                        .shadow(radius: 6)
-                        .padding(.top, 32)
-                    } else {
-                        Image(systemName: "person.crop.circle.fill")
-                            .resizable()
-                            .frame(width: 100, height: 100)
-                            .clipShape(Circle())
-                            .foregroundColor(.gray)
-                            .overlay(Circle().stroke(Color.white, lineWidth: 4))
-                            .shadow(radius: 6)
-                            .padding(.top, 32)
-                    }
-                    // Username
-                    Text(user.name)
-                        .font(.title2).bold()
+                        .padding(.top, 16)
+
+                        // Username & handle
+                        Text(user.name)
+                            .font(.title).bold()
+                            .foregroundColor(.white)
+                            .padding(.top, 12)
+                        if let username = user.username {
+                            Text("@\(username)")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+
+                        // Stats
+                        HStack(spacing: 24) {
+                            StatView(number: Double(followersCount), label: "Followers")
+                            StatView(number: Double(followingCount), label: "Following")
+                            StatView(number: 0, label: "Projects")
+                            StatView(number: user.rating ?? 0, label: "Rating", isDouble: true)
+                        }
                         .padding(.top, 8)
-                    // Stats row
-                    HStack(spacing: 24) {
-                        VStack {
-                            Text("\(followersCount)")
-                                .font(.headline)
-                            Text("Followers")
-                                .font(.caption)
+
+                        // Bio/description
+                        if let desc = user.description, !desc.isEmpty {
+                            Text(desc)
+                                .font(.body)
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                                .padding(.top, 8)
+                        } else {
+                            Text(user.email)
+                                .font(.body)
+                                .foregroundColor(.white.opacity(0.7))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                                .padding(.top, 8)
                         }
-                        VStack {
-                            Text("\(followingCount)")
-                                .font(.headline)
-                            Text("Following")
-                                .font(.caption)
+
+                        // Info rows
+                        VStack(spacing: 8) {
+                            if let city = user.city, let country = user.country {
+                                InfoRow(icon: "location", text: "\(city), \(country)")
+                            }
+                            if let workMode = user.workMode {
+                                InfoRow(icon: "globe", text: workMode.rawValue)
+                            }
+                            if let paymentMode = user.paymentMode {
+                                InfoRow(icon: paymentMode == .paid ? "creditcard.fill" : "gift.fill", text: paymentMode.rawValue.capitalized)
+                            }
+                            if let genres = user.genres, !genres.isEmpty {
+                                InfoRow(icon: "music.note.list", text: genres.map { $0.rawValue }.joined(separator: ", "))
+                            }
                         }
-                        VStack {
-                            Text("0") // Placeholder
-                                .font(.headline)
-                            Text("Projects")
-                                .font(.caption)
-                        }
-                        VStack {
-                            Text(String(format: "%.1f", user.rating ?? 0.0))
-                                .font(.headline)
-                            Text("Rating")
-                                .font(.caption)
-                        }
-                    }
-                    .padding(.top, 8)
-                    // Bio/description (if available)
-                    Text(user.email) // Placeholder for bio/description
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
                         .padding(.horizontal)
                         .padding(.top, 8)
-                    // Info rows
-                    VStack(spacing: 8) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "location")
-                                .foregroundColor(.blue)
-                            Text("\(user.city ?? ""), \(user.country ?? "")")
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                                .lineLimit(1)
-                            Spacer()
-                        }
-                        HStack(spacing: 8) {
-                            Image(systemName: "globe")
-                                .foregroundColor(.purple)
-                            Text(user.workMode?.rawValue ?? "")
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                            Spacer()
-                        }
-                        HStack(spacing: 8) {
-                            Image(systemName: user.paymentMode == .paid ? "creditcard.fill" : "gift.fill")
-                                .foregroundColor(user.paymentMode == .paid ? .green : .orange)
-                            Text(user.paymentMode?.rawValue.capitalized ?? "")
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                            Spacer()
-                        }
-                        HStack(spacing: 8) {
-                            Image(systemName: "music.note.list")
-                                .foregroundColor(.pink)
-                            Text(user.genres?.map { $0.rawValue }.joined(separator: ", ") ?? "")
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                            Spacer()
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                    Spacer()
-                    // Follow and Message buttons
-                    HStack(spacing: 16) {
-                        FollowButton(userId: user.id, viewModel: viewModel)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                        Button(action: { showDirectChat = true }) {
-                            Text("Message")
+
+                        // Action buttons
+                        HStack(spacing: 24) {
+                            ProfileFollowButton(userId: user.id, viewModel: viewModel)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(Color.accentColor.opacity(0.2))
-                                .foregroundColor(.accentColor)
-                                .cornerRadius(8)
+                            Button(action: { showDirectChat = true }) {
+                                Text("Message")
+                                    .font(.headline.bold())
+                                    .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                            .fill(Color.white.opacity(0.18))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                                    )
+                                    .foregroundColor(.white)
+                            }
+                            .disabled(false)
                         }
-                        .disabled(false)
+                        .frame(maxWidth: 340)
+                        .padding(.top, 40)
+                        .padding(.horizontal)
+                        .padding(.bottom, 24)
+                    } else {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 24)
                 }
-                .task {
-                    followersCount = await Creatist.shared.fetchFollowersCount(for: user.id.uuidString)
-                    followingCount = await Creatist.shared.fetchFollowingCount(for: user.id.uuidString)
-                }
-            } else {
-                Spacer()
-                ProgressView()
-                Spacer()
             }
         }
-        .navigationTitle(user?.name ?? "Profile")
         .navigationBarTitleDisplayMode(.inline)
-        .background(Color(.systemBackground))
         .fullScreenCover(isPresented: $showDirectChat) {
             if let currentUser = Creatist.shared.user, let otherUser = user {
                 let urlString = "ws://localhost:8080/ws/message/\(otherUser.id.uuidString)?token=\(KeychainHelper.get("accessToken") ?? "")"
@@ -174,6 +163,50 @@ struct UserProfileView: View {
             } else {
                 Text("User not logged in")
             }
+        }
+        .task {
+            if let user = user {
+                followersCount = await Creatist.shared.fetchFollowersCount(for: user.id.uuidString)
+                followingCount = await Creatist.shared.fetchFollowingCount(for: user.id.uuidString)
+            }
+        }
+    }
+}
+
+// Helper views
+struct StatView: View {
+    let number: Double
+    let label: String
+    var isDouble: Bool = false
+    var body: some View {
+        VStack {
+            if isDouble {
+                Text(String(format: "%.1f", number))
+                    .font(.headline)
+                    .foregroundColor(.white)
+            } else {
+                Text("\(Int(number))")
+                    .font(.headline)
+                    .foregroundColor(.white)
+            }
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.8))
+        }
+    }
+}
+
+struct InfoRow: View {
+    let icon: String
+    let text: String
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .foregroundColor(.white)
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(.white)
+            Spacer()
         }
     }
 } 

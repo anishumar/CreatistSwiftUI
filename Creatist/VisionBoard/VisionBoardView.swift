@@ -18,12 +18,7 @@ struct VisionBoardView: View {
 
     var body: some View {
         NavigationView {
-            VStack {
-                Text("VisionBoard")
-                    .font(.largeTitle).bold()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading)
-                    .padding(.top)
+            VStack(spacing: 0) {
                 Picker("Project Type", selection: $selectedTab) {
                     Text("My Projects").tag(0)
                     Text("Partner Projects").tag(1)
@@ -38,16 +33,16 @@ struct VisionBoardView: View {
                     ScrollView {
                         VStack(spacing: 24) {
                             if selectedTab == 0 {
-                                ForEach(myBoards) { board in
+                                ForEach(Array(myBoards.enumerated()), id: \.element.id) { idx, board in
                                     NavigationLink(destination: destinationView(for: board)) {
-                                        VisionBoardCard(board: board)
+                                        VisionBoardCard(board: board, index: idx)
                                     }
                                     .buttonStyle(PlainButtonStyle())
                                 }
                             } else {
-                                ForEach(partnerBoards) { board in
+                                ForEach(Array(partnerBoards.enumerated()), id: \.element.id) { idx, board in
                                     NavigationLink(destination: destinationView(for: board)) {
-                                        VisionBoardCard(board: board)
+                                        VisionBoardCard(board: board, index: idx)
                                     }
                                     .buttonStyle(PlainButtonStyle())
                                 }
@@ -56,9 +51,11 @@ struct VisionBoardView: View {
                         .padding(.horizontal)
                         .padding(.top, 8)
                     }
+                    .navigationTitle("VisionBoard")
+                    .navigationBarTitleDisplayMode(.large)
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
+            .background(Color(.systemBackground).ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {

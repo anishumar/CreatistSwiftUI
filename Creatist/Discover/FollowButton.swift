@@ -1,6 +1,7 @@
 import SwiftUI
 
-struct FollowButton: View {
+// Large, pill-shaped follow button for user profile
+struct ProfileFollowButton: View {
     let userId: UUID
     @ObservedObject var viewModel: UserListViewModel
     @State private var isLoading = false
@@ -8,11 +9,60 @@ struct FollowButton: View {
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
         viewModel.nearbyUsers.first(where: { $0.id == userId })
     }
-    // Don't show follow button if viewing own profile
     private var isOwnProfile: Bool {
         user?.id == Creatist.shared.user?.id
     }
-    
+    var body: some View {
+        if let user = user, !isOwnProfile {
+            Button(action: {
+                Task {
+                    isLoading = true
+                    await viewModel.toggleFollow(for: user)
+                    isLoading = false
+                }
+            }) {
+                HStack(spacing: 6) {
+                    if isLoading {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
+                    Text((user.isFollowing ?? false) ? "Following" : "Follow")
+                        .font(.headline.bold())
+                }
+                .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48)
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                        if !(user.isFollowing ?? false) {
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .fill(Color.accentColor.opacity(0.28))
+                        }
+                    }
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                )
+                .foregroundColor(.white)
+            }
+            .disabled(isLoading)
+        }
+    }
+}
+
+// Compact, frosted follow button for cards
+struct CompactFollowButton: View {
+    let userId: UUID
+    @ObservedObject var viewModel: UserListViewModel
+    @State private var isLoading = false
+    var user: User? {
+        viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
+        viewModel.nearbyUsers.first(where: { $0.id == userId })
+    }
+    private var isOwnProfile: Bool {
+        user?.id == Creatist.shared.user?.id
+    }
     var body: some View {
         if let user = user, !isOwnProfile {
             Button(action: {
@@ -26,25 +76,47 @@ struct FollowButton: View {
                     if isLoading {
                         ProgressView()
                             .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: (user.isFollowing ?? false) ? "person.fill.badge.minus" : "person.badge.plus")
-                            .font(.caption)
                     }
-                    Text((user.isFollowing ?? false) ? "Unfollow" : "Follow")
-                        .font(.caption)
-                        .fontWeight(.medium)
+                    Text((user.isFollowing ?? false) ? "Following" : "Follow")
+                        .font(.callout)
+                        .fontWeight(.semibold)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background((user.isFollowing ?? false) ? Color.gray.opacity(0.13) : Color.blue.opacity(0.1))
-                .foregroundColor((user.isFollowing ?? false) ? .gray : .blue)
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke((user.isFollowing ?? false) ? Color.gray.opacity(0.32) : Color.blue.opacity(0.3), lineWidth: 1)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.ultraThinMaterial)
                 )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                )
+                .foregroundColor(.white)
             }
             .disabled(isLoading)
+        }
+    }
+}
+
+// Deprecated: Use ProfileFollowButton or CompactFollowButton instead
+@available(*, deprecated, message: "Use ProfileFollowButton or CompactFollowButton instead.")
+struct FollowButton: View {
+    let userId: UUID
+    @ObservedObject var viewModel: UserListViewModel
+    var compact: Bool = false
+    @State private var isLoading = false
+    var user: User? {
+        viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
+        viewModel.nearbyUsers.first(where: { $0.id == userId })
+    }
+    private var isOwnProfile: Bool {
+        user?.id == Creatist.shared.user?.id
+    }
+    var body: some View {
+        if compact {
+            CompactFollowButton(userId: userId, viewModel: viewModel)
+        } else {
+            ProfileFollowButton(userId: userId, viewModel: viewModel)
         }
     }
 } 

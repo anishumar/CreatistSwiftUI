@@ -267,6 +267,8 @@ struct VisionBoard: Codable, Identifiable {
     let createdAt: Date
     let updatedAt: Date
     let createdBy: UUID
+    // Add this property for custom card color
+    let colorHex: String?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -278,6 +280,7 @@ struct VisionBoard: Codable, Identifiable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case createdBy = "created_by"
+        case colorHex = "color_hex"
     }
 }
 

@@ -8,6 +8,8 @@ import Combine
 class Creatist {
     public static var shared: Creatist = .init()
     var user: User?
+    // In-memory cache for vision board users
+    var visionBoardUserCache: [UUID: [User]] = [:]
     
     private func _login(email: String, password: String) async -> LoginResponse? {
         let credentials = Credential(email: email, password: password)

@@ -22,8 +22,8 @@ struct TopNearbyView: View {
                         }
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 20) {
-                                ForEach(viewModel.topRatedUsers, id: \ .id) { user in
-                                    UserCard(userId: user.id, viewModel: viewModel)
+                                ForEach(Array(viewModel.topRatedUsers.enumerated()), id: \ .element.id) { idx, user in
+                                    UserCard(userId: user.id, viewModel: viewModel, colorIndex: idx)
                                         .frame(width: 250, height: 260)
                                         .onTapGesture {
                                             selectedUserId = user.id
@@ -39,8 +39,8 @@ struct TopNearbyView: View {
                         }
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 20) {
-                                ForEach(viewModel.nearbyUsers, id: \ .id) { user in
-                                    UserCard(userId: user.id, viewModel: viewModel)
+                                ForEach(Array(viewModel.nearbyUsers.enumerated()), id: \ .element.id) { idx, user in
+                                    UserCard(userId: user.id, viewModel: viewModel, colorIndex: idx)
                                         .frame(width: 250, height: 260)
                                         .onTapGesture {
                                             selectedUserId = user.id
@@ -102,6 +102,7 @@ struct SectionHeader: View {
 struct UserCard: View {
     let userId: UUID
     @ObservedObject var viewModel: UserListViewModel
+    let colorIndex: Int // <-- Add this parameter
     var user: User? {
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
         viewModel.nearbyUsers.first(where: { $0.id == userId })
@@ -165,27 +166,20 @@ struct UserCard: View {
                     .font(.subheadline)
                 }
                 // Follow button at the bottom
-                FollowButton(userId: user.id, viewModel: viewModel)
+                CompactFollowButton(userId: user.id, viewModel: viewModel)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 8)
             }
             .padding()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: 234)
             .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(.regularMaterial)
-                    // White gradient shine at the top
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.white.opacity(0.25), Color.white.opacity(0.05), .clear]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color(.systemBackground), Color(.secondarySystemBackground)]),
+                            startPoint: .top, endPoint: .bottom
                         )
-                        .allowsHitTesting(false)
-                }
+                    )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
