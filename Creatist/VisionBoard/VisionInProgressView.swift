@@ -25,14 +25,49 @@ struct VisionInProgressView: View {
     @State private var selectedDrafts: Set<UUID> = []
     @State private var showCreatePostSheet = false
     @State private var boardGenres: [String] = []
+    @State private var showDetails = true
 
     var body: some View {
         VStack(spacing: 32) {
-            // Section 0: Group Chat
-            Text("Vision In Progress!")
-                .font(.largeTitle).bold()
-            Text("\(board.name)")
-                .font(.title2)
+            // Section 0: Vision Details with chevron
+            VStack(spacing: 0) {
+                HStack {
+                    Text(board.name)
+                        .font(.title).bold()
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer()
+                    Button(action: { withAnimation { showDetails.toggle() } }) {
+                        Image(systemName: showDetails ? "chevron.up" : "chevron.down")
+                            .font(.title3)
+                            .foregroundColor(.accentColor)
+                    }
+                }
+                if showDetails {
+                    if let desc = board.description, !desc.isEmpty {
+                        Text(desc)
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    HStack(spacing: 16) {
+                        Text("Start: ")
+                            .font(.caption).foregroundColor(.secondary)
+                        Text(board.startDate, style: .date)
+                            .font(.caption)
+                        Spacer(minLength: 12)
+                        Text("End: ")
+                            .font(.caption).foregroundColor(.secondary)
+                        Text(board.endDate, style: .date)
+                            .font(.caption)
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            .padding(.top, 8)
+            .padding(.horizontal)
+
             Button(action: {
                 if let user = Creatist.shared.user {
                     let urlString = "ws://localhost:8080/ws/visionboard/\(board.id.uuidString)/group-chat?token=\(KeychainHelper.get("accessToken") ?? "")"
@@ -48,16 +83,29 @@ struct VisionInProgressView: View {
                 }
                 showGroupChat = true
             }) {
-                HStack {
+                HStack(alignment: .center, spacing: 8) {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
-                    Text("Open Group Chat")
+                    Text("Chat with your collaborators")
+                        .font(.headline)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .padding()
                 .background(Color.accentColor.opacity(0.1))
                 .cornerRadius(10)
             }
-            // Section 1: (Task manager placeholder)
-            // ...
+            .frame(width: 363, height: 100)
+            // Section 1: Assign Tasks
+            VStack {
+                Spacer()
+                Text("Assign Tasks")
+                    .font(.title2).bold()
+                    .foregroundColor(.accentColor)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                Spacer()
+            }
+            .frame(width: 363, height: 300)
+            .background(Color.red.opacity(0.1))
+            .cornerRadius(10)
             // Section 2: Drafts
             VStack(alignment: .leading, spacing: 8) {
                 Text("Drafts")

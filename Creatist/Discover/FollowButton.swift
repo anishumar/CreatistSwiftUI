@@ -80,6 +80,7 @@ struct CompactFollowButton: View {
                     Text((user.isFollowing ?? false) ? "Following" : "Follow")
                         .font(.callout)
                         .fontWeight(.semibold)
+                        .foregroundColor((user.isFollowing ?? false) ? Color.gray : Color.accentColor)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 7)
@@ -91,7 +92,7 @@ struct CompactFollowButton: View {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(Color.white.opacity(0.22), lineWidth: 1)
                 )
-                .foregroundColor(.white)
+                // Remove .foregroundColor(.primary) to allow per-text coloring
             }
             .disabled(isLoading)
         }

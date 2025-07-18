@@ -65,11 +65,6 @@ struct VisionBoardView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showNotifications = true }) {
-                        Image(systemName: "bell")
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showInvitations = true }) {
                         Image(systemName: "envelope.open")
                     }

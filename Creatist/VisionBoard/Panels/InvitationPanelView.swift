@@ -3,6 +3,7 @@ import Foundation
 
 struct InvitationPanelView: View {
     @ObservedObject var viewModel: InvitationListViewModel
+    @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationView {
             List {
@@ -91,9 +92,10 @@ struct InvitationPanelView: View {
                 }
             }
             .navigationTitle("Invitations")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+                    Button("Close") { dismiss() }
                 }
             }
             .onAppear {

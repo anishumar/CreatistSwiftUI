@@ -32,8 +32,9 @@ struct ExpandedUserCard: View {
     }
     var body: some View {
         if let user = user {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
+            VStack(alignment: .center, spacing: 16) {
+                // Top: Profile image, name, rating
+                HStack(alignment: .center, spacing: 16) {
                     if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
                         AsyncImage(url: url) { phase in
                             if let image = phase.image {
@@ -46,86 +47,108 @@ struct ExpandedUserCard: View {
                                 ProgressView()
                             }
                         }
-                        .frame(width: 50, height: 50)
+                        .frame(width: 56, height: 56)
                         .clipShape(Circle())
-                        .padding(.trailing, 12)
                     } else {
                         Image(systemName: "person.crop.circle.fill")
                             .resizable()
-                            .frame(width: 50, height: 50)
+                            .frame(width: 56, height: 56)
                             .clipShape(Circle())
                             .foregroundColor(.gray)
-                            .padding(.trailing, 12)
                     }
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(user.name)
                             .font(.title2).bold()
+                            .foregroundColor(.primary)
                         if let rating = user.rating {
-                            HStack(spacing: 2) {
+                            HStack(spacing: 4) {
                                 Image(systemName: "star.fill")
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.yellow)
                                     .font(.caption)
                                 Text(String(format: "%.1f", rating))
                                     .font(.caption)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                             }
                         }
                     }
                     Spacer()
-                    FollowButton(userId: user.id, viewModel: viewModel)
                 }
-                VStack(alignment: .leading, spacing: 6) {
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // 2x2 Grid for details
+                LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], spacing: 10) {
+                    // City
                     if let city = user.city {
-                        HStack {
+                        HStack(spacing: 6) {
                             Image(systemName: "location")
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                                 .font(.caption)
                             Text(city)
                                 .font(.subheadline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.secondary)
                         }
+                    } else {
+                        Spacer(minLength: 0)
                     }
+                    // Work Mode
                     if let workMode = user.workMode {
-                        HStack {
+                        HStack(spacing: 6) {
                             Image(systemName: "globe")
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                                 .font(.caption)
                             Text(workMode.rawValue)
                                 .font(.subheadline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.secondary)
                         }
+                    } else {
+                        Spacer(minLength: 0)
                     }
+                    // Payment Mode
                     if let paymentMode = user.paymentMode {
-                        HStack {
+                        HStack(spacing: 6) {
                             Image(systemName: paymentMode == .paid ? "creditcard.fill" : "gift.fill")
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                                 .font(.caption)
                             Text(paymentMode.rawValue.capitalized)
                                 .font(.subheadline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.secondary)
                         }
+                    } else {
+                        Spacer(minLength: 0)
                     }
+                    // Genres
                     if let genres = user.genres, !genres.isEmpty {
-                        HStack {
+                        HStack(spacing: 6) {
                             Image(systemName: "music.note.list")
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                                 .font(.caption)
                             Text(genres.map { $0.rawValue }.joined(separator: ", "))
                                 .font(.subheadline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                         }
+                    } else {
+                        Spacer(minLength: 0)
                     }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                // Follow button beneath grid
+                HStack {
+                    Spacer()
+                    CompactFollowButton(userId: user.id, viewModel: viewModel)
+                    Spacer()
                 }
             }
             .padding()
-            .frame(width: 363, height: 180)
+            .frame(width: 363, height: 210)
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color.themeColor(at: colorIndex))
+                    .fill(.ultraThinMaterial)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(Color.white.opacity(0.28), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.10), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 4)

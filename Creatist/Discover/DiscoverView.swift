@@ -86,18 +86,41 @@ struct UserListView: View {
     }
 }
 
+// Add this extension to map genre to image name
+extension UserGenre {
+    var imageName: String {
+        "genre_\(self.rawValue)"
+    }
+}
+
+// Update GenreCell to show image
 struct GenreCell: View {
     let genre: UserGenre
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.secondarySystemBackground))
-                .shadow(radius: 2)
+        ZStack(alignment: .bottomLeading) {
+            Image(genre.imageName)
+                .resizable()
+                .scaledToFill()
+                .frame(height: 120)
+                .clipped()
+                .accessibilityLabel(Text("\(genre.rawValue.capitalized) icon"))
+            // Gradient overlay for text readability
+            LinearGradient(
+                gradient: Gradient(colors: [Color.black.opacity(0.0), Color.black.opacity(0.45)]),
+                startPoint: .center, endPoint: .bottom
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            // Genre name
             Text(genre.rawValue.capitalized)
                 .font(.headline)
-                .padding()
+                .foregroundColor(.white)
+                .padding([.leading, .bottom], 12)
+                .shadow(radius: 4)
         }
-        .frame(height: 100)
+        .frame(height: 120)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 3)
     }
 }
 

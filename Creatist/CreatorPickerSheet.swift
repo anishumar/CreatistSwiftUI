@@ -37,7 +37,8 @@ struct CreatorPickerSheet: View {
                     }
                 }
             }
-            .navigationTitle("Select Creator")
+            .navigationTitle("Add Creator")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { onCancel() }

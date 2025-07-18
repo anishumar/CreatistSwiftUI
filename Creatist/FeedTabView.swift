@@ -9,45 +9,86 @@ struct FeedView: View {
     @State private var nextCursor: String? = nil
     @State private var errorMessage: String? = nil
     @State private var userCache: [UUID: User] = [:]
+    @State private var selectedPost: PostWithDetails? = nil
     let segments = ["Trending", "Following"]
     let pageSize = 10
 
     var body: some View {
-        VStack {
-            Picker("Feed Type", selection: $selectedSegment) {
-                ForEach(0..<segments.count, id: \.self) { idx in
-                    Text(segments[idx])
+        NavigationStack {
+            VStack {
+                Picker("Feed Type", selection: $selectedSegment) {
+                    ForEach(0..<segments.count, id: \.self) { idx in
+                        Text(segments[idx])
+                    }
                 }
-            }
-            .pickerStyle(SegmentedPickerStyle())
-            .padding()
+                .pickerStyle(SegmentedPickerStyle())
+                .padding()
 
-            if isLoading && posts.isEmpty {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage = errorMessage {
-                Text(errorMessage).foregroundColor(.red)
-            } else {
-                List {
-                    ForEach(posts, id: \.id) { post in
-                        PostCellView(
-                            post: post,
-                            userCache: $userCache,
-                            fetchUser: fetchUser
-                        )
-                        .onAppear {
-                            checkIfShouldLoadMore(post: post)
+                if isLoading && posts.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let errorMessage = errorMessage {
+                    Text(errorMessage).foregroundColor(.red)
+                } else {
+                    if selectedSegment == 0 {
+                        ZStack {
+                            TrendingCollectionView(posts: posts) { post in
+                                selectedPost = post
+                            }
+                            .frame(height: 600)
+                            .padding(.horizontal, 14)
+                            NavigationLink(
+                                destination: Group {
+                                    if let post = selectedPost {
+                                        ScrollView {
+                                            VStack(alignment: .leading, spacing: 24) {
+                                                // Selected post detail at the top
+                                                PostCellView(post: post, userCache: $userCache, fetchUser: fetchUser)
+                                                    .padding(.bottom, 16)
+                                                // All trending posts below, with the selected post first, then the rest
+                                                let orderedPosts = [post] + posts.filter { $0.id != post.id }
+                                                ForEach(orderedPosts, id: \.id) { trendingPost in
+                                                    if trendingPost.id != post.id {
+                                                        PostCellView(post: trendingPost, userCache: $userCache, fetchUser: fetchUser)
+                                                            .padding(.vertical, 8)
+                                                    }
+                                                }
+                                            }
+                                            .padding()
+                                        }
+                                    }
+                                },
+                                isActive: Binding(
+                                    get: { selectedPost != nil },
+                                    set: { if !$0 { selectedPost = nil } }
+                                )
+                            ) { EmptyView() }
+                            .hidden()
                         }
-                    }
-                    if isLoadingMore {
-                        HStack { Spacer(); ProgressView(); Spacer() }
+                    } else {
+                        List {
+                            ForEach(posts, id: \.id) { post in
+                                PostCellView(
+                                    post: post,
+                                    userCache: $userCache,
+                                    fetchUser: fetchUser
+                                )
+                                .onAppear {
+                                    checkIfShouldLoadMore(post: post)
+                                }
+                            }
+                            if isLoadingMore {
+                                HStack { Spacer(); ProgressView(); Spacer() }
+                            }
+                        }
+                        .listStyle(PlainListStyle())
+                        .refreshable { await reloadPosts() }
                     }
                 }
-                .listStyle(PlainListStyle())
-                .refreshable { await reloadPosts() }
             }
+            .onAppear { Task { await reloadPosts() } }
+            .onChange(of: selectedSegment) { _ in Task { await reloadPosts() } }
+            .navigationTitle("Feed")
         }
-        .onAppear { Task { await reloadPosts() } }
-        .onChange(of: selectedSegment) { _ in Task { await reloadPosts() } }
     }
 
     func reloadPosts() async {
@@ -129,17 +170,48 @@ struct PostCellView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // 1. User image(s) and name(s)
-            HStack(spacing: 12) {
-                if post.isCollaborative, !post.collaborators.isEmpty {
-                    ForEach(post.collaborators, id: \ .userId) { collaborator in
-                        if let user = userCache[collaborator.userId] {
-                            UserImageAndName(user: user)
-                        } else {
-                            Color.gray.frame(width: 36, height: 36).clipShape(Circle())
-                                .onAppear { fetchUser(collaborator.userId) { _ in } }
+            if post.isCollaborative, !post.collaborators.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: -6) {
+                        ForEach(post.collaborators, id: \.userId) { collaborator in
+                            if let user = userCache[collaborator.userId] {
+                                if let url = user.profileImageUrl, let imgUrl = URL(string: url) {
+                                    AsyncImage(url: imgUrl) { phase in
+                                        if let image = phase.image {
+                                            image.resizable().scaledToFill()
+                                        } else if phase.error != nil {
+                                            Image(systemName: "person.crop.circle.fill").resizable().scaledToFill().foregroundColor(.gray)
+                                        } else {
+                                            ProgressView().frame(width: 36, height: 36)
+                                        }
+                                    }
+                                    .frame(width: 36, height: 36)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                } else {
+                                    Image(systemName: "person.crop.circle.fill").resizable().scaledToFill().frame(width: 36, height: 36).clipShape(Circle()).foregroundColor(.gray)
+                                }
+                            } else {
+                                Color.gray.frame(width: 36, height: 36).clipShape(Circle())
+                                    .onAppear { fetchUser(collaborator.userId) { _ in } }
+                            }
                         }
                     }
-                } else {
+                    // Names together
+                    let names = post.collaborators.compactMap { userCache[$0.userId]?.name }.joined(separator: ", ")
+                    if !names.isEmpty {
+                        Text(names)
+                            .font(.subheadline).bold()
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 2)
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
                     if let user = author {
                         UserImageAndName(user: user)
                     } else {
@@ -152,15 +224,31 @@ struct PostCellView: View {
             if let media = post.media.sorted(by: { $0.order < $1.order }).first {
                 AsyncImage(url: URL(string: media.url)) { phase in
                     if let image = phase.image {
-                        image.resizable().aspectRatio(contentMode: .fill)
+                        image.resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.white.opacity(0.7), lineWidth: 2)
+                            )
                     } else if phase.error != nil {
-                        Image(systemName: "photo").resizable().aspectRatio(contentMode: .fit).foregroundColor(.gray)
+                        Image(systemName: "photo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.white.opacity(0.7), lineWidth: 2)
+                            )
+                            .foregroundColor(.gray)
                     } else {
                         ProgressView()
+                            .frame(height: 220)
                     }
                 }
                 .frame(height: 220)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             // 3. Like, comment, share buttons
             HStack(spacing: 24) {
@@ -201,9 +289,11 @@ struct PostCellView: View {
             }
             // 6. Tags
             if !post.tags.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(post.tags, id: \ .self) { tag in
-                        Text("#\(tag)").font(.caption).foregroundColor(.accentColor)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(post.tags, id: \.self) { tag in
+                            Text("#\(tag)").font(.caption).foregroundColor(.accentColor)
+                        }
                     }
                 }
             }
@@ -211,6 +301,8 @@ struct PostCellView: View {
             Text(post.createdAt, style: .relative).font(.caption).foregroundColor(.gray)
         }
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemBackground))
         .onAppear {
             if author == nil {
                 fetchUser(post.userId) { user in

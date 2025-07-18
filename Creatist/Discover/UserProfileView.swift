@@ -6,6 +6,11 @@ struct UserProfileView: View {
     @State private var followersCount: Int = 0
     @State private var followingCount: Int = 0
     @State private var showDirectChat = false
+    @State private var selectedSection = 0
+    let sections = ["Projects", "Top Works"]
+    @State private var userPosts: [PostWithDetails] = []
+    @State private var isLoadingPosts = false
+    @State private var selectedPost: PostWithDetails? = nil
 
     var user: User? {
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
@@ -14,12 +19,17 @@ struct UserProfileView: View {
 
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [Color.black, Color(red: 0.2, green: 0, blue: 0.1)]),
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            // Subtle frosted glass with a hint of red from the bottom
+            ZStack {
+                LinearGradient(
+                    gradient: Gradient(colors: [Color(.systemBackground), Color.red.opacity(0.36)]),
+                    startPoint: .top, endPoint: .bottom
+                )
+                .ignoresSafeArea()
+                Color.clear
+                    .background(.ultraThinMaterial)
+                    .ignoresSafeArea()
+            }
 
             ScrollView {
                 VStack(spacing: 16) {
@@ -57,12 +67,12 @@ struct UserProfileView: View {
                         // Username & handle
                         Text(user.name)
                             .font(.title).bold()
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                             .padding(.top, 12)
                         if let username = user.username {
                             Text("@\(username)")
                                 .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.secondary)
                         }
 
                         // Stats
@@ -78,14 +88,14 @@ struct UserProfileView: View {
                         if let desc = user.description, !desc.isEmpty {
                             Text(desc)
                                 .font(.body)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
                                 .padding(.top, 8)
                         } else {
                             Text(user.email)
                                 .font(.body)
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
                                 .padding(.top, 8)
@@ -119,13 +129,13 @@ struct UserProfileView: View {
                                     .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48)
                                     .background(
                                         RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                            .fill(Color.white.opacity(0.18))
+                                            .fill(Color.primary.opacity(0.08))
                                     )
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                                            .stroke(Color.primary.opacity(0.18), lineWidth: 1)
                                     )
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                             }
                             .disabled(false)
                         }
@@ -133,6 +143,71 @@ struct UserProfileView: View {
                         .padding(.top, 40)
                         .padding(.horizontal)
                         .padding(.bottom, 24)
+                        // Segmented control
+                        Picker("Section", selection: $selectedSection) {
+                            ForEach(0..<sections.count, id: \.self) { idx in
+                                Text(sections[idx])
+                            }
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .padding(.top, 8)
+                        // Section content
+                        if selectedSection == 0 {
+                            if isLoadingPosts {
+                                ProgressView().padding()
+                            } else if userPosts.isEmpty {
+                                Text("No projects found.")
+                                    .foregroundColor(.secondary)
+                                    .padding()
+                            } else {
+                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                                    ForEach(userPosts, id: \.id) { post in
+                                        Button(action: { selectedPost = post }) {
+                                            ZStack {
+                                                if let urlString = post.media.first?.url, let url = URL(string: urlString) {
+                                                    AsyncImage(url: url) { phase in
+                                                        if let image = phase.image {
+                                                            image.resizable().aspectRatio(contentMode: .fill)
+                                                        } else if phase.error != nil {
+                                                            Color.gray
+                                                        } else {
+                                                            ProgressView()
+                                                        }
+                                                    }
+                                                    .frame(height: 140)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                                } else {
+                                                    Color.gray.frame(height: 140)
+                                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal)
+                            }
+                            // Navigation to detail
+                            NavigationLink(
+                                destination: Group {
+                                    if let post = selectedPost {
+                                        PostCellView(post: post, userCache: .constant([:]), fetchUser: {_,_ in })
+                                            .padding()
+                                    }
+                                },
+                                isActive: Binding(
+                                    get: { selectedPost != nil },
+                                    set: { if !$0 { selectedPost = nil } }
+                                )
+                            ) { EmptyView() }.hidden()
+                        } else {
+                            // Top Works placeholder
+                            VStack {
+                                Text("Top Works")
+                                    .foregroundColor(.secondary)
+                                    .padding()
+                                // TODO: List top works here
+                            }
+                        }
                     } else {
                         Spacer()
                         ProgressView()
@@ -168,7 +243,24 @@ struct UserProfileView: View {
             if let user = user {
                 followersCount = await Creatist.shared.fetchFollowersCount(for: user.id.uuidString)
                 followingCount = await Creatist.shared.fetchFollowingCount(for: user.id.uuidString)
+                if selectedSection == 0 {
+                    await loadUserPosts(for: user.id)
+                }
             }
+        }
+        .onChange(of: selectedSection) { newValue in
+            if newValue == 0, let user = user {
+                Task { await loadUserPosts(for: user.id) }
+            }
+        }
+    }
+
+    func loadUserPosts(for userId: UUID) async {
+        isLoadingPosts = true
+        let posts = await Creatist.shared.fetchUserPosts(userId: userId)
+        await MainActor.run {
+            userPosts = posts
+            isLoadingPosts = false
         }
     }
 }
@@ -183,15 +275,15 @@ struct StatView: View {
             if isDouble {
                 Text(String(format: "%.1f", number))
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             } else {
                 Text("\(Int(number))")
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             }
             Text(label)
                 .font(.caption)
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundColor(.secondary)
         }
     }
 }
@@ -202,10 +294,10 @@ struct InfoRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .foregroundColor(.white)
+                .foregroundColor(.primary)
             Text(text)
                 .font(.subheadline)
-                .foregroundColor(.white)
+                .foregroundColor(.secondary)
             Spacer()
         }
     }

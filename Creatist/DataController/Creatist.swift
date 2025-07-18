@@ -1182,4 +1182,10 @@ extension Creatist {
         }
         return []
     }
+
+    // Fetch all posts for a user
+    func fetchUserPosts(userId: UUID) async -> [PostWithDetails] {
+        let url = "/posts/user/\(userId.uuidString)"
+        return await NetworkManager.shared.get(url: url) ?? []
+    }
 }

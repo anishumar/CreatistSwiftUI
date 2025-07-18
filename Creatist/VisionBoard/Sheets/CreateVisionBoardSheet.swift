@@ -113,10 +113,10 @@ struct CreateVisionBoardSheet: View {
                                 Text(isLoadingCreators && showCreatorPickerForGenre == genre ? "Loading..." : "Add Creator")
                             }
                             Spacer()
-                            Button(action: { /* Manage all logic */ }) {
-                                Text("Manage All")
-                                    .font(.caption)
-                            }
+                            // Button(action: { /* Manage all logic */ }) {
+                            //     Text("Manage All")
+                            //         .font(.caption)
+                            // }
                         }
                     }
                 }
@@ -152,7 +152,8 @@ struct CreateVisionBoardSheet: View {
                     }
                 }
             }
-            .navigationTitle("Create Vision Board")
+            .navigationTitle("New Vision")
+            .navigationBarTitleDisplayMode(.inline)
             .alert(isPresented: $showError) {
                 Alert(title: Text("Error"), message: Text(errorMessage), dismissButton: .default(Text("OK")))
             }
@@ -329,7 +330,8 @@ struct ManageCreatorSheet: View {
                     TextField("List equipments (comma separated)", text: $details.requiredEquipments)
                 }
             }
-            .navigationTitle("Manage \(creator.name)")
+            .navigationTitle("Manage")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { onCancel() }
