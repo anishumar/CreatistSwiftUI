@@ -30,7 +30,8 @@ struct TopNearbyView: View {
                                         }
                                 }
                             }
-                            .padding(.horizontal)
+                            .padding(.leading, 12)
+                            .padding(.trailing, 12)
                         }
                     }
                     if !viewModel.nearbyUsers.isEmpty {
@@ -47,7 +48,8 @@ struct TopNearbyView: View {
                                         }
                                 }
                             }
-                            .padding(.horizontal)
+                            .padding(.leading, 12)
+                            .padding(.trailing, 12)
                         }
                     }
                     if viewModel.topRatedUsers.isEmpty && viewModel.nearbyUsers.isEmpty {
@@ -58,6 +60,7 @@ struct TopNearbyView: View {
                 }
             }
             .padding(.vertical)
+            .padding(.horizontal, 12)
         }
         .navigationTitle("\(genre.rawValue.capitalized)")
         .navigationBarTitleDisplayMode(.inline)
@@ -102,91 +105,112 @@ struct SectionHeader: View {
 struct UserCard: View {
     let userId: UUID
     @ObservedObject var viewModel: UserListViewModel
-    let colorIndex: Int // <-- Add this parameter
+    let colorIndex: Int
+    
     var user: User? {
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
         viewModel.nearbyUsers.first(where: { $0.id == userId })
     }
+    
     var body: some View {
         if let user = user {
-            VStack(spacing: 12) {
-                // Profile image
-                if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        } else if phase.error != nil {
-                            Image(systemName: "person.crop.circle.fill")
-                                .resizable().aspectRatio(contentMode: .fill)
-                                .foregroundColor(.gray)
+            ZStack(alignment: .bottom) {
+                // TEMP: Remove background image for testing
+                Color(.secondarySystemBackground)
+                // Gradient overlay
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.5)]),
+                    startPoint: .top, endPoint: .bottom
+                )
+                // User image at the top center and name below
+                VStack {
+                    Spacer().frame(height: 16)
+                    HStack {
+                        Spacer()
+                        if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
+                            AsyncImage(url: url) { phase in
+                                if let image = phase.image {
+                                    image.resizable().scaledToFill()
+                                } else {
+                                    Color.gray
+                                }
+                            }
+                            .frame(width: 90, height: 90)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
                         } else {
-                            ProgressView()
+                            Image(systemName: "person.crop.circle.fill")
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 90, height: 90)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                .foregroundColor(.gray)
                         }
-                    }
-                    .frame(width: 60, height: 60)
-                    .clipShape(Circle())
-                    .padding(.top, 8)
-                } else {
-                    Image(systemName: "person.crop.circle.fill")
-                        .resizable()
-                        .frame(width: 60, height: 60)
-                        .clipShape(Circle())
-                        .foregroundColor(.gray)
-                        .padding(.top, 8)
-                }
-                // Name
-                Text(user.name)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-                // Info rows
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Image(systemName: "location")
-                        Text(user.city ?? "")
-                            .lineLimit(1)
                         Spacer()
-                        Image(systemName: "star.fill")
-                        Text(String(format: "%.1f", user.rating ?? 0.0))
                     }
-                    .font(.subheadline)
-                    HStack {
-                        Image(systemName: "globe")
-                        Text(user.workMode?.rawValue ?? "")
-                            .lineLimit(1)
-                        Spacer()
-                        Image(systemName: "doc.text")
-                        Text("0") // Placeholder for projects
-                    }
-                    .font(.subheadline)
-                    HStack {
-                        Image(systemName: "music.note.list")
-                        Text(user.genres?.map { $0.rawValue }.joined(separator: ", ") ?? "")
-                            .lineLimit(1)
-                    }
-                    .font(.subheadline)
+                    Spacer().frame(height: 10)
+                    Text(user.name)
+                        .font(.title3).bold()
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer()
                 }
-                // Follow button at the bottom
-                CompactFollowButton(userId: user.id, viewModel: viewModel)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 8)
+                // Bottom action and details overlay
+                VStack(spacing: 8) {
+                    HStack(spacing: 16) {
+                        CompactFollowButton(userId: user.id, viewModel: viewModel)
+                            .frame(height: 36)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 2)
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Image(systemName: "location")
+                                .foregroundColor(.white)
+                            Text(user.city ?? "")
+                                .foregroundColor(.white)
+                            Spacer()
+                            Image(systemName: "star.fill")
+                                .foregroundColor(.yellow)
+                            Text(String(format: "%.1f", user.rating ?? 0.0))
+                                .foregroundColor(.white)
+                        }
+                        .font(.caption)
+                        .lineLimit(1)
+                        HStack {
+                            Image(systemName: "globe")
+                                .foregroundColor(.white)
+                            Text(user.workMode?.rawValue ?? "")
+                                .foregroundColor(.white)
+                            Spacer()
+                            Image(systemName: "music.note.list")
+                                .foregroundColor(.white)
+                            Text(user.genres?.map { $0.rawValue }.joined(separator: ", ") ?? "")
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .font(.caption)
+                    }
+                    .padding(10)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 10)
+                }
             }
-            .padding()
-            .frame(maxWidth: .infinity, maxHeight: 234)
-            .background(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color(.systemBackground), Color(.secondarySystemBackground)]),
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    )
-            )
+            .frame(width: 250, height: 260)
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(Color.white.opacity(0.28), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 4)
+            .shadow(color: Color.black.opacity(0.18), radius: 12, x: 0, y: 6)
+            .contentShape(RoundedRectangle(cornerRadius: 28))
         }
     }
 }

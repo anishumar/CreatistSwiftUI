@@ -19,12 +19,20 @@ struct VisionBoardView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                Picker("Project Type", selection: $selectedTab) {
-                    Text("My Projects").tag(0)
-                    Text("Partner Projects").tag(1)
+                // Always show title and segment control
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("VisionBoard")
+                        .font(.largeTitle).bold()
+                        .padding(.top, 18)
+                        .padding(.horizontal, 18)
+                    Picker("Project Type", selection: $selectedTab) {
+                        Text("My Projects").tag(0)
+                        Text("Partner Projects").tag(1)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 12)
                 }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding([.horizontal, .bottom])
                 if isLoading {
                     Spacer()
                     ProgressView()
@@ -51,8 +59,6 @@ struct VisionBoardView: View {
                         .padding(.horizontal)
                         .padding(.top, 8)
                     }
-                    .navigationTitle("VisionBoard")
-                    .navigationBarTitleDisplayMode(.large)
                 }
             }
             .background(Color(.systemBackground).ignoresSafeArea())

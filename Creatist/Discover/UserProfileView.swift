@@ -19,22 +19,25 @@ struct UserProfileView: View {
 
     var body: some View {
         ZStack {
-            // Subtle frosted glass with a hint of red from the bottom
-            ZStack {
-                LinearGradient(
-                    gradient: Gradient(colors: [Color(.systemBackground), Color.red.opacity(0.36)]),
-                    startPoint: .top, endPoint: .bottom
-                )
+            // User image as background
+            if let user = user, let urlString = user.profileImageUrl, let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        Color(.systemBackground)
+                    }
+                }
                 .ignoresSafeArea()
-                Color.clear
-                    .background(.ultraThinMaterial)
-                    .ignoresSafeArea()
+                .blur(radius: 32)
+                .overlay(Color.black.opacity(0.35).ignoresSafeArea())
+            } else {
+                Color(.systemBackground).ignoresSafeArea()
             }
 
             ScrollView {
                 VStack(spacing: 16) {
                     if let user = user {
-                        Spacer(minLength: 24)
                         // Profile image
                         ZStack {
                             Circle()
@@ -62,7 +65,7 @@ struct UserProfileView: View {
                                     .foregroundColor(.gray)
                             }
                         }
-                        .padding(.top, 16)
+                        .padding(.top, 32)
 
                         // Username & handle
                         Text(user.name)
@@ -116,8 +119,9 @@ struct UserProfileView: View {
                                 InfoRow(icon: "music.note.list", text: genres.map { $0.rawValue }.joined(separator: ", "))
                             }
                         }
-                        .padding(.horizontal)
+                        .frame(maxWidth: .infinity)
                         .padding(.top, 8)
+                        .multilineTextAlignment(.center)
 
                         // Action buttons
                         HStack(spacing: 24) {
@@ -209,9 +213,7 @@ struct UserProfileView: View {
                             }
                         }
                     } else {
-                        Spacer()
                         ProgressView()
-                        Spacer()
                     }
                 }
             }

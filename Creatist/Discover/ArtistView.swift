@@ -47,12 +47,12 @@ struct ExpandedUserCard: View {
                                 ProgressView()
                             }
                         }
-                        .frame(width: 56, height: 56)
+                        .frame(width: 90, height: 90)
                         .clipShape(Circle())
                     } else {
                         Image(systemName: "person.crop.circle.fill")
                             .resizable()
-                            .frame(width: 56, height: 56)
+                            .frame(width: 90, height: 90)
                             .clipShape(Circle())
                             .foregroundColor(.gray)
                     }

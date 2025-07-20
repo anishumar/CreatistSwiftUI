@@ -27,11 +27,21 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.black, Color(red: 0.2, green: 0, blue: 0.1)]),
-                    startPoint: .top, endPoint: .bottom
-                )
+                // User image as background (blurred and darkened)
+                if let user = currentUser, let urlString = user.profileImageUrl, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            Color(.systemBackground)
+                        }
+                    }
                 .ignoresSafeArea()
+                    .blur(radius: 32)
+                    .overlay(Color.black.opacity(0.35).ignoresSafeArea())
+                } else {
+                    Color(.systemBackground).ignoresSafeArea()
+                }
                 ScrollView {
                     VStack(spacing: 16) {
                         if let user = currentUser {

@@ -96,31 +96,71 @@ extension UserGenre {
 // Update GenreCell to show image
 struct GenreCell: View {
     let genre: UserGenre
+    static let flatColors: [Color] = [
+        Color(red: 1.00, green: 0.60, blue: 0.30), // Orange
+        Color(red: 1.00, green: 0.30, blue: 0.30), // Red
+        Color(red: 0.30, green: 0.60, blue: 1.00), // Blue
+        Color(red: 0.60, green: 0.40, blue: 1.00), // Purple
+        Color(red: 0.78, green: 0.68, blue: 0.92), // Soft purple
+        Color(red: 1.00, green: 0.78, blue: 0.60)  // Soft orange
+    ]
+    @Environment(\.colorScheme) var colorScheme
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            Image(genre.imageName)
-                .resizable()
-                .scaledToFill()
+            // Flat, bold color background
+            GenreCell.flatColors[genreIndex % GenreCell.flatColors.count]
                 .frame(height: 120)
-                .clipped()
-                .accessibilityLabel(Text("\(genre.rawValue.capitalized) icon"))
-            // Gradient overlay for text readability
-            LinearGradient(
-                gradient: Gradient(colors: [Color.black.opacity(0.0), Color.black.opacity(0.45)]),
-                startPoint: .center, endPoint: .bottom
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+            // Large, blurred, zoomed-in SF Symbol for genre
+            genreSymbol
+                .font(.system(size: 70, weight: .bold))
+                .foregroundColor(
+                    colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.18)
+                )
+                .blur(radius: 0.5)
+                .scaleEffect(1.3)
+                .offset(x: 38, y: -18)
             // Genre name
             Text(genre.rawValue.capitalized)
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundColor(colorScheme == .dark ? .white : .black)
                 .padding([.leading, .bottom], 12)
-                .shadow(radius: 4)
+                .shadow(color: .white.opacity(0.2), radius: 2)
         }
         .frame(height: 120)
-        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 3)
+        .shadow(color: Color.black.opacity(0.10), radius: 4, x: 0, y: 2)
+    }
+    // Helper to get the genre's index for color cycling
+    private var genreIndex: Int {
+        UserGenre.allCases.firstIndex(of: genre) ?? 0
+    }
+    // SF Symbol for each genre
+    private var genreSymbol: some View {
+        let symbolName: String
+        switch genre.rawValue.lowercased() {
+        case "photographer": symbolName = "camera.aperture"
+        case "videographer": symbolName = "video.fill"
+        case "musician": symbolName = "music.note"
+        case "painter": symbolName = "paintpalette.fill"
+        case "writer": symbolName = "pencil.and.outline"
+        case "singer": symbolName = "mic.fill"
+        case "guitarist": symbolName = "guitars.fill"
+        case "dancer": symbolName = "figure.dance"
+        case "actor": symbolName = "theatermasks.fill"
+        case "composer": symbolName = "music.quarternote.3"
+        case "editor": symbolName = "scissors"
+        case "drummer": symbolName = "music.mic"
+        case "violinist": symbolName = "music.note.list"
+        case "flutist": symbolName = "wind"
+        case "sitarist": symbolName = "music.note.house"
+        case "percussionist": symbolName = "metronome"
+        case "vocalist": symbolName = "waveform"
+        case "graphicdesigner": symbolName = "scribble.variable"
+        case "director": symbolName = "film.fill"
+        default: symbolName = "star.fill"
+        }
+        return Image(systemName: symbolName)
     }
 }
 

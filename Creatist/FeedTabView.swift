@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import AVKit
 
 struct FeedView: View {
     @State private var selectedSegment = 0
@@ -15,15 +16,22 @@ struct FeedView: View {
 
     var body: some View {
         NavigationStack {
-            VStack {
-                Picker("Feed Type", selection: $selectedSegment) {
-                    ForEach(0..<segments.count, id: \.self) { idx in
-                        Text(segments[idx])
+            VStack(spacing: 0) {
+                // Always show title and segment control
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Feed")
+                        .font(.largeTitle).bold()
+                        .padding(.top, 18)
+                        .padding(.horizontal, 18)
+                    Picker("Feed Type", selection: $selectedSegment) {
+                        ForEach(0..<segments.count, id: \.self) { idx in
+                            Text(segments[idx])
+                        }
                     }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 12)
                 }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding()
-
                 if isLoading && posts.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let errorMessage = errorMessage {
@@ -87,7 +95,6 @@ struct FeedView: View {
             }
             .onAppear { Task { await reloadPosts() } }
             .onChange(of: selectedSegment) { _ in Task { await reloadPosts() } }
-            .navigationTitle("Feed")
         }
     }
 
@@ -222,33 +229,44 @@ struct PostCellView: View {
             }
             // 2. Media
             if let media = post.media.sorted(by: { $0.order < $1.order }).first {
-                AsyncImage(url: URL(string: media.url)) { phase in
-                    if let image = phase.image {
-                        image.resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity)
+                if media.url.lowercased().hasSuffix(".mp4") || media.type == "video" {
+                    if let url = URL(string: media.url) {
+                        VideoPlayer(player: AVPlayer(url: url))
+                            .aspectRatio(1, contentMode: .fit)
+                            .frame(maxWidth: .infinity, maxHeight: 320)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.7), lineWidth: 2)
-                            )
-                    } else if phase.error != nil {
-                        Image(systemName: "photo")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.7), lineWidth: 2)
-                            )
-                            .foregroundColor(.gray)
-                    } else {
-                        ProgressView()
-                            .frame(height: 220)
                     }
+                } else {
+                    AsyncImage(url: URL(string: media.url)) { phase in
+                        if let image = phase.image {
+                            image.resizable()
+                                .scaledToFill()
+                                .aspectRatio(1, contentMode: .fit)
+                                .frame(maxWidth: .infinity, maxHeight: 320)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.white.opacity(0.7), lineWidth: 2)
+                                )
+                        } else if phase.error != nil {
+                            Image(systemName: "photo")
+                                .resizable()
+                                .scaledToFill()
+                                .aspectRatio(1, contentMode: .fit)
+                                .frame(maxWidth: .infinity, maxHeight: 320)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.white.opacity(0.7), lineWidth: 2)
+                                )
+                                .foregroundColor(.gray)
+                        } else {
+                            ProgressView()
+                                .frame(height: 320)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: 320)
                 }
-                .frame(height: 220)
             }
             // 3. Like, comment, share buttons
             HStack(spacing: 24) {
@@ -328,7 +346,7 @@ struct PostCellView: View {
                     if isLoadingComments {
                         ProgressView("Loading comments...")
                     } else {
-                        List(comments, id: \ .id) { comment in
+                        List(comments, id: \.id) { comment in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(comment.content).font(.body)
                                 Text(comment.createdAt, style: .relative).font(.caption).foregroundColor(.gray)
