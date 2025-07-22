@@ -11,7 +11,7 @@ import SwiftUI
 struct CreatistApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SplashWrapperView()
         }
     }
 }

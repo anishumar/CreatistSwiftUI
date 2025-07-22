@@ -52,7 +52,7 @@ actor NetworkManager {
         
         let result: T? = await request(url: url, method: "POST", body: body)
         
-        if let result = result {
+        if let result {
             print("🌐 NetworkManager: POST \(url) - SUCCESS")
         } else {
             print("🌐 NetworkManager: POST \(url) - FAILED")
@@ -104,6 +104,7 @@ actor NetworkManager {
         if !urlString.contains("/auth/otp") && !urlString.contains("/auth/signup") {
             if let accessToken = KeychainHelper.get("accessToken") {
                 urlRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                
             }
         }
 
