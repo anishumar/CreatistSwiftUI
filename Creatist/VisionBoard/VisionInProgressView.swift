@@ -103,13 +103,78 @@ struct VisionInProgressView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                 Spacer()
             }
-            .frame(width: 363, height: 300)
+            .frame(width: 363, height: 210)
             .background(Color.red.opacity(0.1))
             .cornerRadius(10)
             // Section 2: Drafts
             VStack(alignment: .leading, spacing: 8) {
-                Text("Drafts")
-                    .font(.headline)
+                HStack {
+                    Text("Drafts")
+                        .font(.headline)
+                    Spacer()
+                    if isSelectingDrafts {
+                        Button(action: {
+                            withAnimation {
+                                isSelectingDrafts = false
+                                selectedDrafts.removeAll()
+                            }
+                        }) {
+                            Text("Cancel")
+                                .font(.subheadline).bold()
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(Color(.systemGray3)))
+                        }
+                        .buttonStyle(.plain)
+                        if !selectedDrafts.isEmpty {
+                            Button(action: {
+                                Task {
+                                    isUploadingDraft = true
+                                    let idsToDelete = selectedDrafts
+                                    for draftId in idsToDelete {
+                                        if await Creatist.shared.deleteDraft(draftId: draftId) {
+                                            withAnimation { drafts.removeAll { $0.id == draftId } }
+                                        }
+                                    }
+                                    isUploadingDraft = false
+                                    withAnimation {
+                                        isSelectingDrafts = false
+                                        selectedDrafts.removeAll()
+                                    }
+                                }
+                            }) {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
+                            }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
+                            .disabled(isUploadingDraft)
+                            Button(action: {
+                                showCreatePostSheet = true
+                            }) {
+                                Image(systemName: "paperplane.fill")
+                            }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
+                        }
+                    } else {
+                        Button(action: {
+                            withAnimation {
+                                isSelectingDrafts = true
+                                selectedDrafts.removeAll()
+                            }
+                        }) {
+                            Text("Select")
+                                .font(.subheadline).bold()
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(Color(.systemGray3)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
                         // Plus icon for adding draft
@@ -234,67 +299,6 @@ struct VisionInProgressView: View {
             }
             Spacer()
             // Multi-select toolbar/floating button
-            if isSelectingDrafts && !selectedDrafts.isEmpty {
-                HStack {
-                    Spacer()
-                    Button(action: {
-                        showCreatePostSheet = true
-                    }) {
-                        Label("Post", systemImage: "paperplane.fill")
-                            .font(.title2.bold())
-                            .padding()
-                            .background(Capsule().fill(Color.accentColor))
-                            .foregroundColor(.white)
-                            .shadow(radius: 4)
-                    }
-                    .padding(.trailing, 12)
-                    // --- New Delete Button ---
-                    Button(action: {
-                        Task {
-                            isUploadingDraft = true
-                            let idsToDelete = selectedDrafts
-                            for draftId in idsToDelete {
-                                if await Creatist.shared.deleteDraft(draftId: draftId) {
-                                    withAnimation { drafts.removeAll { $0.id == draftId } }
-                                }
-                            }
-                            isUploadingDraft = false
-                            withAnimation {
-                                isSelectingDrafts = false
-                                selectedDrafts.removeAll()
-                            }
-                        }
-                    }) {
-                        Label("Delete", systemImage: "trash")
-                            .font(.title2.bold())
-                            .padding()
-                            .background(Capsule().fill(Color.red))
-                            .foregroundColor(.white)
-                            .shadow(radius: 4)
-                    }
-                    .padding(.trailing, 24)
-                    .disabled(isUploadingDraft)
-                    if isUploadingDraft {
-                        ProgressView().padding(.trailing, 8)
-                    }
-                }
-                .padding(.bottom, 12)
-                .transition(.move(edge: .bottom))
-            }
-            if isSelectingDrafts {
-                HStack {
-                    Spacer()
-                    Button("Cancel") {
-                        withAnimation {
-                            isSelectingDrafts = false
-                            selectedDrafts.removeAll()
-                        }
-                    }
-                    .padding(.trailing, 24)
-                    .padding(.bottom, 4)
-                }
-                .transition(.move(edge: .bottom))
-            }
         }
         .padding()
         .onAppear {
@@ -402,6 +406,7 @@ struct VisionInProgressView: View {
 // Draft preview and comments sheet
 struct DraftPreviewSheet: View {
     let draft: Draft
+    @Environment(\.dismiss) var dismiss
     @State private var comments: [DraftComment] = []
     @State private var newComment: String = ""
     @State private var isLoading = false
@@ -509,9 +514,10 @@ struct DraftPreviewSheet: View {
             }
             .padding()
             .navigationTitle("Draft Preview")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+                    Button("Close") { dismiss() }
                 }
             }
             .onAppear {
@@ -595,7 +601,6 @@ struct CreatePostSheet: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Create Post").font(.largeTitle).bold()
                     // Collaborators
                     if collaborators.count > 1 {
                         HStack(spacing: 12) {
@@ -648,6 +653,7 @@ struct CreatePostSheet: View {
                 }
                 .padding()
             }
+            .navigationTitle("Create Post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

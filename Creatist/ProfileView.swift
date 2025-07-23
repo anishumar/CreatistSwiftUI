@@ -27,21 +27,14 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // User image as background (blurred and darkened)
-                if let user = currentUser, let urlString = user.profileImageUrl, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFill()
-                        } else {
-                            Color(.systemBackground)
-                        }
-                    }
+                // Frosted glassy accent color gradient background
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.accentColor.opacity(0.85), Color.clear]),
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
                 .ignoresSafeArea()
-                    .blur(radius: 32)
-                    .overlay(Color.black.opacity(0.35).ignoresSafeArea())
-                } else {
-                    Color(.systemBackground).ignoresSafeArea()
-                }
+                .background(.ultraThinMaterial)
                 ScrollView {
                     VStack(spacing: 16) {
                         if let user = currentUser {
@@ -49,7 +42,7 @@ struct ProfileView: View {
                             // Profile image
                             ZStack {
                                 Circle()
-                                    .fill(Color.white)
+                                    .fill(Color(.systemBackground))
                                     .frame(width: 110, height: 110)
                                 if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
                                     AsyncImage(url: url) { phase in
@@ -58,7 +51,7 @@ struct ProfileView: View {
                                         } else if phase.error != nil {
                                             Image(systemName: "person.crop.circle.fill")
                                                 .resizable().aspectRatio(contentMode: .fill)
-                                                .foregroundColor(.gray)
+                                                .foregroundColor(Color(.tertiaryLabel))
                                         } else {
                                             ProgressView()
                                         }
@@ -70,19 +63,19 @@ struct ProfileView: View {
                                         .resizable()
                                         .frame(width: 100, height: 100)
                                         .clipShape(Circle())
-                                        .foregroundColor(.gray)
+                                        .foregroundColor(Color(.tertiaryLabel))
                                 }
                             }
                             .padding(.top, 16)
                             // Username
                             Text(user.name)
                                 .font(.title).bold()
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.primary)
                                 .padding(.top, 12)
                             if let username = user.username {
                                 Text("@\(username)")
                                     .font(.subheadline)
-                                    .foregroundColor(.white.opacity(0.7))
+                                    .foregroundColor(Color.secondary)
                             }
                             // Stats
                             HStack(spacing: 24) {
@@ -96,14 +89,14 @@ struct ProfileView: View {
                             if let desc = user.description, !desc.isEmpty {
                                 Text(desc)
                                     .font(.body)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(Color.primary)
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal)
                                     .padding(.top, 8)
                             } else {
                                 Text(user.email)
                                     .font(.body)
-                                    .foregroundColor(.white.opacity(0.7))
+                                    .foregroundColor(Color.secondary)
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal)
                                     .padding(.top, 8)
@@ -132,6 +125,7 @@ struct ProfileView: View {
                                 }
                             }
                             .pickerStyle(SegmentedPickerStyle())
+                            .padding(.horizontal, 16)
                             .padding(.top, 24)
                             // Section content
                             if selectedSection == 0 {
@@ -140,7 +134,7 @@ struct ProfileView: View {
                                     ProgressView().padding()
                                 } else if myPosts.isEmpty {
                                     Text("No projects found.")
-                                        .foregroundColor(.white.opacity(0.7))
+                                        .foregroundColor(Color.secondary)
                                         .padding()
                                 } else {
                                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
@@ -152,7 +146,7 @@ struct ProfileView: View {
                                                             if let image = phase.image {
                                                                 image.resizable().aspectRatio(contentMode: .fill)
                                                             } else if phase.error != nil {
-                                                                Color.gray
+                                                                Color(.systemGray4)
                                                             } else {
                                                                 ProgressView()
                                                             }
@@ -160,7 +154,7 @@ struct ProfileView: View {
                                                         .frame(height: 140)
                                                         .clipShape(RoundedRectangle(cornerRadius: 12))
                                                     } else {
-                                                        Color.gray.frame(height: 140)
+                                                        Color(.systemGray4).frame(height: 140)
                                                             .clipShape(RoundedRectangle(cornerRadius: 12))
                                                     }
                                                 }
@@ -186,7 +180,7 @@ struct ProfileView: View {
                                 // Top Works placeholder
                                 VStack {
                                     Text("Top Works")
-                                        .foregroundColor(.white.opacity(0.7))
+                                        .foregroundColor(Color.secondary)
                                         .padding()
                                     // TODO: List top works here
                                 }

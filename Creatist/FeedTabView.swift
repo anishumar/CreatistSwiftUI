@@ -11,6 +11,7 @@ struct FeedView: View {
     @State private var errorMessage: String? = nil
     @State private var userCache: [UUID: User] = [:]
     @State private var selectedPost: PostWithDetails? = nil
+    @State private var showChatSheet = false
     let segments = ["Trending", "Following"]
     let pageSize = 10
 
@@ -21,7 +22,6 @@ struct FeedView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Feed")
                         .font(.largeTitle).bold()
-                        .padding(.top, 18)
                         .padding(.horizontal, 18)
                     Picker("Feed Type", selection: $selectedSegment) {
                         ForEach(0..<segments.count, id: \.self) { idx in
@@ -32,18 +32,17 @@ struct FeedView: View {
                     .padding(.horizontal, 18)
                     .padding(.bottom, 12)
                 }
+                .padding(.vertical, 18)
                 if isLoading && posts.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let errorMessage = errorMessage {
                     Text(errorMessage).foregroundColor(.red)
                 } else {
                     if selectedSegment == 0 {
-                        ZStack {
+                        VStack(spacing: 0) {
                             TrendingCollectionView(posts: posts) { post in
                                 selectedPost = post
                             }
-                            .frame(height: 600)
-                            .padding(.horizontal, 14)
                             NavigationLink(
                                 destination: Group {
                                     if let post = selectedPost {
@@ -72,29 +71,50 @@ struct FeedView: View {
                             ) { EmptyView() }
                             .hidden()
                         }
+                        .padding(.top, 8)
                     } else {
-                        List {
-                            ForEach(posts, id: \.id) { post in
-                                PostCellView(
-                                    post: post,
-                                    userCache: $userCache,
-                                    fetchUser: fetchUser
-                                )
-                                .onAppear {
-                                    checkIfShouldLoadMore(post: post)
+                        VStack(spacing: 0) {
+                            List {
+                                ForEach(posts, id: \.id) { post in
+                                    PostCellView(
+                                        post: post,
+                                        userCache: $userCache,
+                                        fetchUser: fetchUser
+                                    )
+                                    .onAppear {
+                                        checkIfShouldLoadMore(post: post)
+                                    }
+                                }
+                                if isLoadingMore {
+                                    HStack { Spacer(); ProgressView(); Spacer() }
                                 }
                             }
-                            if isLoadingMore {
-                                HStack { Spacer(); ProgressView(); Spacer() }
-                            }
+                            .listStyle(PlainListStyle())
+                            .refreshable { await reloadPosts() }
                         }
-                        .listStyle(PlainListStyle())
-                        .refreshable { await reloadPosts() }
+                        .padding(.top, 8)
                     }
                 }
             }
             .onAppear { Task { await reloadPosts() } }
             .onChange(of: selectedSegment) { _ in Task { await reloadPosts() } }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showChatSheet = true }) {
+                        Image(systemName: "message")
+                    }
+                }
+            }
+            .sheet(isPresented: $showChatSheet) {
+                VStack {
+                    Text("Chat feature coming soon!")
+                        .font(.title2)
+                        .padding()
+                    Button("Close") { showChatSheet = false }
+                        .padding()
+                }
+                .presentationDetents([.medium])
+            }
         }
     }
 
@@ -173,6 +193,7 @@ struct PostCellView: View {
     @State private var newComment: String = ""
     @State private var isLoadingComments: Bool = false
     @State private var isAddingComment: Bool = false
+    @State private var showShareSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -241,24 +262,14 @@ struct PostCellView: View {
                         if let image = phase.image {
                             image.resizable()
                                 .scaledToFill()
-                                .aspectRatio(1, contentMode: .fit)
                                 .frame(maxWidth: .infinity, maxHeight: 320)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.white.opacity(0.7), lineWidth: 2)
-                                )
                         } else if phase.error != nil {
                             Image(systemName: "photo")
                                 .resizable()
                                 .scaledToFill()
-                                .aspectRatio(1, contentMode: .fit)
                                 .frame(maxWidth: .infinity, maxHeight: 320)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.white.opacity(0.7), lineWidth: 2)
-                                )
                                 .foregroundColor(.gray)
                         } else {
                             ProgressView()
@@ -293,7 +304,7 @@ struct PostCellView: View {
                 Button(action: { showComments = true }) {
                     Label("\(comments.count > 0 ? comments.count : post.commentCount)", systemImage: "bubble.right")
                 }
-                Button(action: { /* Share action */ }) {
+                Button(action: { showShareSheet = true }) {
                     Image(systemName: "square.and.arrow.up")
                 }
             }.font(.subheadline)
@@ -370,6 +381,7 @@ struct PostCellView: View {
                     }.padding()
                 }
                 .navigationTitle("Comments")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Close") { showComments = false }
@@ -382,6 +394,13 @@ struct PostCellView: View {
                         isLoadingComments = false
                     }
                 }
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let media = post.media.sorted(by: { $0.order < $1.order }).first, let url = URL(string: media.url) {
+                ShareSheet(activityItems: [url])
+            } else {
+                ShareSheet(activityItems: ["Check out this post on Creatist!"])
             }
         }
     }
@@ -409,4 +428,15 @@ struct UserImageAndName: View {
             Text(user.name).font(.subheadline).bold()
         }
     }
+}
+
+// Helper for share sheet
+struct ShareSheet: UIViewControllerRepresentable {
+    var activityItems: [Any]
+    var applicationActivities: [UIActivity]? = nil
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
+        return controller
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 } 

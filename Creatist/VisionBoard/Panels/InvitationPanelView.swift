@@ -10,7 +10,22 @@ struct InvitationPanelView: View {
                 if viewModel.isLoading {
                     ProgressView().frame(maxWidth: .infinity, alignment: .center)
                 } else if viewModel.invitations.isEmpty {
-                    Text("No pending invitations.").foregroundColor(.secondary)
+                    VStack(spacing: 12) {
+                        Image(systemName: "envelope.open")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 44, height: 44)
+                            .foregroundColor(.secondary)
+                        Text("You're all caught up!")
+                            .font(.title3).bold()
+                            .foregroundColor(.primary)
+                        Text("No pending invitations right now.")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 180)
+                    .listRowBackground(Color.clear)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 } else {
                     ForEach(viewModel.invitations) { invitation in
                         let vb: VisionBoard? = {
