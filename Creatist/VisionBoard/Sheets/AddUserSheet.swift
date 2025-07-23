@@ -36,10 +36,12 @@ struct AddUserSheet: View {
                         }
                         Text(user.name)
                             .padding(.leading, 8)
+                            .foregroundColor(.primary)
                     }
                 }
             }
             .navigationTitle("Add User")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { onCancel() }

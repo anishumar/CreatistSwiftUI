@@ -45,56 +45,59 @@ struct VisionDetailView: View {
                     Text(board.endDate, style: .date)
                 }.font(.caption)
                 Divider()
-                let pendingAssignments = activeAssignments.filter { $0.status == .pending }
-                if !pendingAssignments.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Pending Users:").font(.headline)
-                        ForEach(pendingAssignments, id: \ .id) { assignment in
-                            HStack {
-                                AssignmentRowView(assignment: assignment)
-                                Spacer()
-                                if remindLoading[assignment.userId] == true {
-                                    ProgressView().frame(width: 24, height: 24)
-                                } else if remindSuccess[assignment.userId] == true {
-                                    Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-                                } else {
-                                    Button("Remind") {
-                                        Task {
-                                            remindLoading[assignment.userId] = true
-                                            remindSuccess[assignment.userId] = false
-                                            let _ = await Creatist.shared.remindUser(assignment: assignment)
-                                            remindLoading[assignment.userId] = false
-                                            remindSuccess[assignment.userId] = true
-                                        }
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
                 if isLoading {
                     ProgressView()
                 } else {
                     ForEach(genres) { genre in
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(genre.name).font(.headline)
-                            ForEach(genre.assignments.filter { $0.status != .rejected }, id: \ .id) { assignment in
-                                AssignmentRowView(assignment: assignment)
+                            HStack {
+                                Text(genre.name.capitalized).font(.headline)
+                                Spacer()
+                                if let userId = Creatist.shared.user?.id, genre.assignments.contains(where: { $0.status == .pending }) && board.createdBy == userId {
+                                    Button(action: {
+                                        showAddUserSheetForGenre = IdentifiableUUID(id: genre.id)
+                                        Task {
+                                            isLoadingFollowing = true
+                                            let alreadyAssigned = Set(genre.assignments.map { $0.userId })
+                                            let allFollowing = await Creatist.shared.fetchFollowing(for: userId, genre: UserGenre(rawValue: genre.name) ?? .editor)
+                                            following = allFollowing.filter { !alreadyAssigned.contains($0.id) }
+                                            isLoadingFollowing = false
+                                        }
+                                    }) {
+                                        Image(systemName: "plus.circle")
+                                            .font(.system(size: 20, weight: .regular))
+                                            .foregroundColor(.gray)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
-                            if let userId = Creatist.shared.user?.id, genre.assignments.contains(where: { $0.status == .pending }) && board.createdBy == userId {
-                                Button("Add User") {
-                                    showAddUserSheetForGenre = IdentifiableUUID(id: genre.id)
-                                    Task {
-                                        isLoadingFollowing = true
-                                        let alreadyAssigned = Set(genre.assignments.map { $0.userId })
-                                        let allFollowing = await Creatist.shared.fetchFollowing(for: userId, genre: UserGenre(rawValue: genre.name) ?? .editor)
-                                        following = allFollowing.filter { !alreadyAssigned.contains($0.id) }
-                                        isLoadingFollowing = false
+                            ForEach(genre.assignments.filter { $0.status != .rejected }, id: \ .id) { assignment in
+                                HStack {
+                                    AssignmentRowView(assignment: assignment)
+                                    Spacer()
+                                    if assignment.status == .pending {
+                                        if remindLoading[assignment.userId] == true {
+                                            ProgressView().frame(width: 24, height: 24)
+                                        } else if remindSuccess[assignment.userId] == true {
+                                            Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                                        } else {
+                                            Button(action: {
+                                                Task {
+                                                    remindLoading[assignment.userId] = true
+                                                    remindSuccess[assignment.userId] = false
+                                                    let _ = await Creatist.shared.remindUser(assignment: assignment)
+                                                    remindLoading[assignment.userId] = false
+                                                    remindSuccess[assignment.userId] = true
+                                                }
+                                            }) {
+                                                Image(systemName: "bell")
+                                                    .font(.system(size: 20, weight: .regular))
+                                                    .foregroundColor(.gray)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
                                     }
                                 }
-                                .buttonStyle(.borderedProminent)
                             }
                         }
                         .padding(.vertical, 4)

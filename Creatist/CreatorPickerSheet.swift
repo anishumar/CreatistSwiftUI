@@ -34,6 +34,7 @@ struct CreatorPickerSheet: View {
                         }
                         Text(user.name)
                             .padding(.leading, 8)
+                            .foregroundColor(.primary)
                     }
                 }
             }

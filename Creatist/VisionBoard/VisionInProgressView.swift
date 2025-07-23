@@ -25,7 +25,7 @@ struct VisionInProgressView: View {
     @State private var selectedDrafts: Set<UUID> = []
     @State private var showCreatePostSheet = false
     @State private var boardGenres: [String] = []
-    @State private var showDetails = true
+    @State private var showDetails = false
 
     var body: some View {
         VStack(spacing: 32) {
@@ -34,6 +34,7 @@ struct VisionInProgressView: View {
                 HStack {
                     Text(board.name)
                         .font(.title).bold()
+                        .foregroundColor(Color.primary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer()
@@ -47,20 +48,22 @@ struct VisionInProgressView: View {
                     if let desc = board.description, !desc.isEmpty {
                         Text(desc)
                             .font(.body)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Color.secondary)
                             .padding(.top, 4)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     HStack(spacing: 16) {
                         Text("Start: ")
-                            .font(.caption).foregroundColor(.secondary)
+                            .font(.caption).foregroundColor(Color.secondary)
                         Text(board.startDate, style: .date)
                             .font(.caption)
+                            .foregroundColor(Color.primary)
                         Spacer(minLength: 12)
                         Text("End: ")
-                            .font(.caption).foregroundColor(.secondary)
+                            .font(.caption).foregroundColor(Color.secondary)
                         Text(board.endDate, style: .date)
                             .font(.caption)
+                            .foregroundColor(Color.primary)
                     }
                     .padding(.top, 2)
                 }
@@ -104,13 +107,14 @@ struct VisionInProgressView: View {
                 Spacer()
             }
             .frame(width: 363, height: 210)
-            .background(Color.red.opacity(0.1))
+            .background(Color.accentColor.opacity(0.1))
             .cornerRadius(10)
             // Section 2: Drafts
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Drafts")
                         .font(.headline)
+                        .foregroundColor(Color.primary)
                     Spacer()
                     if isSelectingDrafts {
                         Button(action: {
@@ -121,10 +125,10 @@ struct VisionInProgressView: View {
                         }) {
                             Text("Cancel")
                                 .font(.subheadline).bold()
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.primary)
                                 .padding(.horizontal, 18)
                                 .padding(.vertical, 6)
-                                .background(Capsule().fill(Color(.systemGray3)))
+                                .background(Capsule().fill(Color(.systemGray5)))
                         }
                         .buttonStyle(.plain)
                         if !selectedDrafts.isEmpty {
@@ -145,18 +149,23 @@ struct VisionInProgressView: View {
                                 }
                             }) {
                                 Image(systemName: "trash")
-                                    .foregroundColor(.red)
+                                    .font(.system(size: 16, weight: .regular))
+                                    .foregroundColor(.white)
+                                    .frame(width: 32, height: 32)
+                                    .background(Circle().fill(Color(.systemGray4)))
                             }
-                            .buttonStyle(.borderless)
-                            .controlSize(.small)
-                            .disabled(isUploadingDraft)
+                            .buttonStyle(.plain)
                             Button(action: {
                                 showCreatePostSheet = true
                             }) {
-                                Image(systemName: "paperplane.fill")
+                                Text("Post")
+                                    .font(.subheadline).bold()
+                                    .foregroundColor(.accentColor)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 6)
+                                    .background(Capsule().fill(Color(.systemGray5)))
                             }
-                            .buttonStyle(.borderless)
-                            .controlSize(.small)
+                            .buttonStyle(.plain)
                         }
                     } else {
                         Button(action: {
@@ -167,10 +176,10 @@ struct VisionInProgressView: View {
                         }) {
                             Text("Select")
                                 .font(.subheadline).bold()
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.primary)
                                 .padding(.horizontal, 18)
                                 .padding(.vertical, 6)
-                                .background(Capsule().fill(Color(.systemGray3)))
+                                .background(Capsule().fill(Color(.systemGray5)))
                         }
                         .buttonStyle(.plain)
                     }
@@ -218,7 +227,7 @@ struct VisionInProgressView: View {
                                                     } else if phase.error != nil {
                                                         Image(systemName: "doc")
                                                             .resizable().aspectRatio(contentMode: .fit)
-                                                            .foregroundColor(.gray)
+                                                            .foregroundColor(Color(.tertiaryLabel))
                                                     } else {
                                                         ProgressView()
                                                     }
@@ -256,7 +265,7 @@ struct VisionInProgressView: View {
                                                     } else if phase.error != nil {
                                                         Image(systemName: "doc")
                                                             .resizable().aspectRatio(contentMode: .fit)
-                                                            .foregroundColor(.gray)
+                                                            .foregroundColor(Color(.tertiaryLabel))
                                                     } else {
                                                         ProgressView()
                                                     }
@@ -432,7 +441,7 @@ struct DraftPreviewSheet: View {
                         } else if phase.error != nil {
                             Image(systemName: "doc")
                                 .resizable().aspectRatio(contentMode: .fit)
-                                .foregroundColor(.gray)
+                                .foregroundColor(Color(.tertiaryLabel))
                         } else {
                             ProgressView()
                         }
@@ -466,6 +475,7 @@ struct DraftPreviewSheet: View {
                                 } else {
                                     Text(comment.comment)
                                         .font(.body)
+                                        .foregroundColor(Color.primary)
                                     if comment.userId == Creatist.shared.user?.id {
                                         Menu {
                                             Button("Edit") {
@@ -480,7 +490,7 @@ struct DraftPreviewSheet: View {
                                             }
                                         } label: {
                                             Image(systemName: "ellipsis")
-                                                .foregroundColor(.gray)
+                                                .foregroundColor(Color(.tertiaryLabel))
                                         }
                                     }
                                 }
@@ -620,7 +630,7 @@ struct CreatePostSheet: View {
                                     if let image = phase.image {
                                         image.resizable().aspectRatio(contentMode: .fill)
                                     } else if phase.error != nil {
-                                        Image(systemName: "doc").resizable().aspectRatio(contentMode: .fit).foregroundColor(.gray)
+                                        Image(systemName: "doc").resizable().aspectRatio(contentMode: .fit).foregroundColor(Color(.tertiaryLabel))
                                     } else {
                                         ProgressView()
                                     }
