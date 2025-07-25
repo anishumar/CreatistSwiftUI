@@ -11,7 +11,7 @@ struct FeedView: View {
     @State private var errorMessage: String? = nil
     @State private var userCache: [UUID: User] = [:]
     @State private var selectedPost: PostWithDetails? = nil
-    @State private var showChatSheet = false
+    @State private var showChatList = false
     let segments = ["Trending", "Following"]
     let pageSize = 10
 
@@ -100,20 +100,13 @@ struct FeedView: View {
             .onChange(of: selectedSegment) { _ in Task { await reloadPosts() } }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showChatSheet = true }) {
+                    Button(action: { showChatList = true }) {
                         Image(systemName: "message")
                     }
                 }
             }
-            .sheet(isPresented: $showChatSheet) {
-                VStack {
-                    Text("Chat feature coming soon!")
-                        .font(.title2)
-                        .padding()
-                    Button("Close") { showChatSheet = false }
-                        .padding()
-                }
-                .presentationDetents([.medium])
+            .navigationDestination(isPresented: $showChatList) {
+                ChatListView()
             }
         }
     }
@@ -439,4 +432,137 @@ struct ShareSheet: UIViewControllerRepresentable {
         return controller
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// Add ChatListView at the end of the file
+struct ChatListView: View {
+    @State private var searchText: String = ""
+    @State private var isSearching: Bool = false
+    @State private var showNewChat = false
+    // Remove dummy chats, use an empty array for now
+    let chats: [(id: UUID, name: String, lastMessage: String, unread: Int)] = []
+    var filteredChats: [(id: UUID, name: String, lastMessage: String, unread: Int)] {
+        if searchText.isEmpty { return chats }
+        return chats.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.lastMessage.localizedCaseInsensitiveContains(searchText) }
+    }
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Chats")
+                    .font(.largeTitle).bold()
+                Spacer()
+                Button(action: { showNewChat = true }) {
+                    Image(systemName: "plus")
+                        .font(.title2)
+                        .padding(8)
+                        .background(Circle().fill(Color.accentColor))
+                        .foregroundColor(.white)
+                }
+            }
+            .padding([.top, .horizontal])
+            // Native search bar
+            SearchBar(text: $searchText, isEditing: $isSearching)
+                .padding(.horizontal)
+                .padding(.bottom, 4)
+            Divider()
+            if filteredChats.isEmpty {
+                Spacer()
+                VStack(spacing: 16) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 48, height: 48)
+                        .foregroundColor(.secondary)
+                    Text("No chats yet")
+                        .font(.title3).bold()
+                        .foregroundColor(.primary)
+                    Text("Start a new chat to connect with someone!")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                Spacer()
+            } else {
+                List {
+                    ForEach(filteredChats, id: \ .id) { chat in
+                        HStack {
+                            Circle().fill(Color(.systemGray4)).frame(width: 44, height: 44)
+                            VStack(alignment: .leading) {
+                                Text(chat.name).font(.headline)
+                                Text(chat.lastMessage).font(.subheadline).foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if chat.unread > 0 {
+                                Text("\(chat.unread)")
+                                    .font(.caption).bold()
+                                    .foregroundColor(.white)
+                                    .padding(6)
+                                    .background(Circle().fill(Color.green))
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .listStyle(PlainListStyle())
+            }
+        }
+        .sheet(isPresented: $showNewChat) {
+            NavigationView {
+                VStack {
+                    Text("Start a new chat")
+                        .font(.title2)
+                        .padding()
+                    Spacer()
+                    Button("Close") { showNewChat = false }
+                        .padding()
+                }
+                .navigationTitle("New Chat")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+    }
+}
+
+// UIKit native search bar wrapper
+import UIKit
+struct SearchBar: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isEditing: Bool
+    class Coordinator: NSObject, UISearchBarDelegate {
+        @Binding var text: String
+        @Binding var isEditing: Bool
+        init(text: Binding<String>, isEditing: Binding<Bool>) {
+            _text = text
+            _isEditing = isEditing
+        }
+        func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+            text = searchText
+        }
+        func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+            isEditing = true
+        }
+        func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+            isEditing = false
+        }
+        func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+            searchBar.resignFirstResponder()
+            isEditing = false
+            text = ""
+        }
+    }
+    func makeCoordinator() -> Coordinator {
+        return Coordinator(text: $text, isEditing: $isEditing)
+    }
+    func makeUIView(context: Context) -> UISearchBar {
+        let searchBar = UISearchBar(frame: .zero)
+        searchBar.delegate = context.coordinator
+        searchBar.placeholder = "Search"
+        searchBar.showsCancelButton = true
+        searchBar.autocapitalizationType = .none
+        return searchBar
+    }
+    func updateUIView(_ uiView: UISearchBar, context: Context) {
+        uiView.text = text
+        uiView.showsCancelButton = isEditing
+    }
 } 

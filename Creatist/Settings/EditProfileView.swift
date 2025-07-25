@@ -5,7 +5,7 @@ struct EditProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name: String = ""
     @State private var description: String = ""
-    @State private var age: String = ""
+    @State private var dob: Date = Calendar.current.date(byAdding: .year, value: -18, to: Date()) ?? Date()
     @State private var selectedGenres: Set<UserGenre> = []
     @State private var paymentMode: PaymentMode = .free
     @State private var workMode: WorkMode = .online
@@ -17,6 +17,8 @@ struct EditProfileView: View {
     @State private var imagePickerItem: PhotosPickerItem? = nil
 
     var user: User? { Creatist.shared.user }
+    var onSave: (() -> Void)? = nil
+    var onCancel: (() -> Void)? = nil
 
     // MARK: - Supabase Storage Config
     private let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
@@ -69,11 +71,11 @@ struct EditProfileView: View {
                         Spacer()
                     }
                 }
-                Section(header: Text("Basic Info")) {
+                Section(header: Text("Basic Information (Name, Bio, DOB)")) {
                     TextField("Name", text: $name)
                     TextField("Description", text: $description)
-                    TextField("Age", text: $age)
-                        .keyboardType(.numberPad)
+                    DatePicker("Date of Birth", selection: $dob, displayedComponents: .date)
+                        .datePickerStyle(.compact)
                 }
                 Section(header: Text("Genres")) {
                     Button {
@@ -115,9 +117,10 @@ struct EditProfileView: View {
                 }
             }
             .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { onCancel?() }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if isSaving {
@@ -150,17 +153,23 @@ struct EditProfileView: View {
         guard let user = Creatist.shared.user else { return }
         name = user.name
         description = user.description ?? ""
-        age = user.age.map { String($0) } ?? ""
+        if let userAge = user.age, userAge > 0 {
+            dob = Calendar.current.date(byAdding: .year, value: -userAge, to: Date()) ?? Calendar.current.date(byAdding: .year, value: -18, to: Date()) ?? Date()
+        } else {
+            dob = Calendar.current.date(byAdding: .year, value: -18, to: Date()) ?? Date()
+        }
         selectedGenres = Set(user.genres ?? [])
         paymentMode = user.paymentMode ?? .free
         workMode = user.workMode ?? .online
-        // Reset selectedImage so AsyncImage shows the current profile image
         selectedImage = nil
     }
 
     func saveProfile() {
         guard !name.isEmpty else { errorMessage = "Name is required"; return }
-        guard let ageInt = Int(age), ageInt > 0 else { errorMessage = "Enter a valid age"; return }
+        let calendar = Calendar.current
+        let now = Date()
+        let ageComponents = calendar.dateComponents([.year], from: dob, to: now)
+        guard let ageInt = ageComponents.year, ageInt > 0 else { errorMessage = "Enter a valid date of birth"; return }
         isSaving = true
         errorMessage = nil
         Task {
@@ -214,11 +223,7 @@ struct EditProfileView: View {
             }
             await MainActor.run {
                 isSaving = false
-                if profileUpdateSuccess {
-                    dismiss()
-                } else {
-                    errorMessage = "Failed to update profile after 2 attempts."
-                }
+                onSave?()
             }
         }
     }

@@ -11,6 +11,7 @@ struct UserProfileView: View {
     @State private var userPosts: [PostWithDetails] = []
     @State private var isLoadingPosts = false
     @State private var selectedPost: PostWithDetails? = nil
+    @State private var userCache: [UUID: User] = [:]
 
     var user: User? {
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
@@ -163,7 +164,7 @@ struct UserProfileView: View {
                                     .foregroundColor(Color.secondary)
                                     .padding()
                             } else {
-                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) { // 8pt spacing for tight look
                                     ForEach(userPosts, id: \.id) { post in
                                         Button(action: { selectedPost = post }) {
                                             ZStack {
@@ -187,14 +188,27 @@ struct UserProfileView: View {
                                         }
                                     }
                                 }
-                                .padding(.horizontal)
+                                .padding(.horizontal, 12) // Consistent horizontal padding for the grid
                             }
                             // Navigation to detail
                             NavigationLink(
                                 destination: Group {
                                     if let post = selectedPost {
-                                        PostCellView(post: post, userCache: .constant([:]), fetchUser: {_,_ in })
-                                            .padding()
+                                        ScrollView {
+                                            VStack(alignment: .leading, spacing: 8) { // 8pt between posts for tighter look
+                                                PostCellView(post: post, userCache: $userCache, fetchUser: fetchUser)
+                                                    .padding(.bottom, 16) // 16pt below selected post
+                                                let orderedPosts = [post] + userPosts.filter { $0.id != post.id }
+                                                ForEach(orderedPosts, id: \.id) { detailPost in
+                                                    if detailPost.id != post.id {
+                                                        PostCellView(post: detailPost, userCache: $userCache, fetchUser: fetchUser)
+                                                            .padding(.vertical, 8)
+                                                    }
+                                                }
+                                            }
+                                            .padding(.horizontal, 12) // Consistent horizontal padding
+                                            .padding(.top, 8)
+                                        }
                                     }
                                 },
                                 isActive: Binding(
@@ -203,12 +217,15 @@ struct UserProfileView: View {
                                 )
                             ) { EmptyView() }.hidden()
                         } else {
-                            // Top Works placeholder
+                            // Top Works placeholder (make grid style same as above for future use)
                             VStack {
                                 Text("Top Works")
                                     .foregroundColor(Color.secondary)
                                     .padding()
                                 // TODO: List top works here
+                                // Example grid for future:
+                                // LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) { ... }
+                                // .padding(.horizontal, 12)
                             }
                         }
                     } else {
@@ -262,6 +279,23 @@ struct UserProfileView: View {
         await MainActor.run {
             userPosts = posts
             isLoadingPosts = false
+        }
+    }
+
+    func fetchUser(userId: UUID, completion: @escaping (User?) -> Void) {
+        if let cached = userCache[userId] {
+            completion(cached)
+            return
+        }
+        Task {
+            if let user = await Creatist.shared.fetchUserById(userId: userId) {
+                await MainActor.run {
+                    userCache[userId] = user
+                    completion(user)
+                }
+            } else {
+                completion(nil)
+            }
         }
     }
 }

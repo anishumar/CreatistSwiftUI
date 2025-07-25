@@ -9,7 +9,6 @@ struct ProfileView: View {
     @StateObject private var locationDelegate = LocationDelegate()
     @State private var locationManager = CLLocationManager()
     @State private var showLogoutAlert = false
-    @State private var showEditProfile = false
     @State private var showCreatePostSheet = false
     @State private var selectedMediaItems: [PhotosPickerItem] = []
     @State private var selectedMediaData: [(data: Data, type: String)] = []
@@ -23,6 +22,8 @@ struct ProfileView: View {
     @State private var myPosts: [PostWithDetails] = []
     @State private var isLoadingMyPosts = false
     @State private var selectedPost: PostWithDetails? = nil
+    @State private var showSettingsSheet = false
+    @State private var userCache: [UUID: User] = [:]
 
     var body: some View {
         NavigationStack {
@@ -137,7 +138,7 @@ struct ProfileView: View {
                                         .foregroundColor(Color.secondary)
                                         .padding()
                                 } else {
-                                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) { // was 16, now 8 for tighter look
                                         ForEach(myPosts, id: \.id) { post in
                                             Button(action: { selectedPost = post }) {
                                                 ZStack {
@@ -159,16 +160,31 @@ struct ProfileView: View {
                                                     }
                                                 }
                                             }
+                                            .buttonStyle(PlainButtonStyle()) // Remove extra padding from post cells
                                         }
                                     }
-                                    .padding(.horizontal)
+                                    .padding(.horizontal, 12) // Use consistent horizontal padding for the grid
                                 }
                                 // Navigation to detail
                                 NavigationLink(
                                     destination: Group {
                                         if let post = selectedPost {
-                                            PostCellView(post: post, userCache: .constant([:]), fetchUser: {_,_ in })
+                                            ScrollView {
+                                                VStack(alignment: .leading, spacing: 24) {
+                                                    // Selected post detail at the top
+                                                    PostCellView(post: post, userCache: $userCache, fetchUser: fetchUser)
+                                                        .padding(.bottom, 16)
+                                                    // All other posts below, with the selected post first, then the rest
+                                                    let orderedPosts = [post] + myPosts.filter { $0.id != post.id }
+                                                    ForEach(orderedPosts, id: \.id) { detailPost in
+                                                        if detailPost.id != post.id {
+                                                            PostCellView(post: detailPost, userCache: $userCache, fetchUser: fetchUser)
+                                                                .padding(.vertical, 8)
+                                                        }
+                                                    }
+                                                }
                                                 .padding()
+                                            }
                                         }
                                     },
                                     isActive: Binding(
@@ -207,27 +223,7 @@ struct ProfileView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button {
-                            updateLocation()
-                        } label: {
-                            if isUpdatingLocation {
-                                Label("Updating...", systemImage: "location")
-                            } else {
-                                Label("Update Location", systemImage: "location")
-                            }
-                        }
-                        Button {
-                            showEditProfile = true
-                        } label: {
-                            Label("Edit Profile", systemImage: "pencil")
-                        }
-                        Button(role: .destructive) {
-                            showLogoutAlert = true
-                        } label: {
-                            Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                    } label: {
+                    Button(action: { showSettingsSheet = true }) {
                         Image(systemName: "gearshape")
                             .imageScale(.large)
                     }
@@ -237,18 +233,22 @@ struct ProfileView: View {
                 Button("Log Out", role: .destructive) { logout() }
                 Button("Cancel", role: .cancel) { }
             }
-            .sheet(isPresented: $showEditProfile) {
-                EditProfileView()
+            .sheet(isPresented: $showCreatePostSheet) {
+                CreateSelfPostSheet(onPost: {
+                    showCreatePostSheet = false
+                    // Optionally refresh user's posts here
+                    if selectedSection == 0, let user = currentUser {
+                        Task { await loadMyPosts(for: user.id) }
+                    }
+                })
             }
-        }
-        .sheet(isPresented: $showCreatePostSheet) {
-            CreateSelfPostSheet(onPost: {
-                showCreatePostSheet = false
-                // Optionally refresh user's posts here
-                if selectedSection == 0, let user = currentUser {
-                    Task { await loadMyPosts(for: user.id) }
-                }
-            })
+            .sheet(isPresented: $showSettingsSheet) {
+                SettingsSheet(
+                    isUpdatingLocation: $isUpdatingLocation,
+                    onUpdateLocation: updateLocation,
+                    onLogout: { showLogoutAlert = true }
+                )
+            }
         }
         .task {
             if let user = currentUser {
@@ -304,6 +304,23 @@ struct ProfileView: View {
         await MainActor.run {
             myPosts = posts
             isLoadingMyPosts = false
+        }
+    }
+
+    func fetchUser(userId: UUID, completion: @escaping (User?) -> Void) {
+        if let cached = userCache[userId] {
+            completion(cached)
+            return
+        }
+        Task {
+            if let user = await Creatist.shared.fetchUserById(userId: userId) {
+                await MainActor.run {
+                    userCache[userId] = user
+                    completion(user)
+                }
+            } else {
+                completion(nil)
+            }
         }
     }
 }
@@ -499,5 +516,124 @@ class LocationDelegate: NSObject, CLLocationManagerDelegate, ObservableObject {
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location error: \(error)")
         onLocationUpdate(nil)
+    }
+}
+
+struct SettingsSheet: View {
+    @Binding var isUpdatingLocation: Bool
+    var onUpdateLocation: () -> Void
+    var onLogout: () -> Void
+    @Environment(\.dismiss) var dismiss
+    @State private var showEditProfile = false
+    @State private var showPrivacyPolicy = false
+    @State private var showTermsOfService = false
+    @State private var showAbout = false
+    @State private var showHelp = false
+    @State private var showContact = false
+    var body: some View {
+        NavigationView {
+            List {
+                Section(header: Text("Profile").foregroundColor(Color.secondary)) {
+                    Button(action: onUpdateLocation) {
+                        if isUpdatingLocation {
+                            Label {
+                                Text("Updating...").foregroundColor(Color.primary)
+                            } icon: {
+                                Image(systemName: "location")
+                            }
+                        } else {
+                            Label {
+                                Text("Update Location").foregroundColor(Color.primary)
+                            } icon: {
+                                Image(systemName: "location")
+                            }
+                        }
+                    }
+                    Button(action: { showEditProfile = true }) {
+                        Label {
+                            Text("Edit Profile").foregroundColor(Color.primary)
+                        } icon: {
+                            Image(systemName: "pencil")
+                        }
+                    }
+                }
+                Section(header: Text("Legal").foregroundColor(Color.secondary)) {
+                    Button(action: { showPrivacyPolicy = true }) {
+                        Label {
+                            Text("Privacy Policy").foregroundColor(Color.primary)
+                        } icon: {
+                            Image(systemName: "lock.shield")
+                        }
+                    }
+                    Button(action: { showTermsOfService = true }) {
+                        Label {
+                            Text("Terms of Service").foregroundColor(Color.primary)
+                        } icon: {
+                            Image(systemName: "doc.text")
+                        }
+                    }
+                }
+                Section(header: Text("Support").foregroundColor(Color.secondary)) {
+                    Button(action: { showAbout = true }) {
+                        Label {
+                            Text("About").foregroundColor(Color.primary)
+                        } icon: {
+                            Image(systemName: "info.circle")
+                        }
+                    }
+                    Button(action: { showHelp = true }) {
+                        Label {
+                            Text("Help & Support").foregroundColor(Color.primary)
+                        } icon: {
+                            Image(systemName: "questionmark.circle")
+                        }
+                    }
+                    Button(action: { showContact = true }) {
+                        Label {
+                            Text("Contact Us").foregroundColor(Color.primary)
+                        } icon: {
+                            Image(systemName: "envelope")
+                        }
+                    }
+                }
+                Section(header: Text("Account").foregroundColor(Color.secondary)) {
+                    Button(role: .destructive, action: onLogout) {
+                        Label {
+                            Text("Log Out").foregroundColor(Color.red)
+                        } icon: {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showEditProfile) {
+                EditProfileView(
+                    onSave: { showEditProfile = false },
+                    onCancel: { showEditProfile = false }
+                )
+            }
+            .sheet(isPresented: $showPrivacyPolicy) {
+                PrivacyPolicySheet(isPresented: $showPrivacyPolicy)
+            }
+            .sheet(isPresented: $showTermsOfService) {
+                TermsOfServiceSheet(isPresented: $showTermsOfService)
+            }
+            .sheet(isPresented: $showAbout) {
+                AboutSheet(isPresented: $showAbout)
+            }
+            .sheet(isPresented: $showHelp) {
+                HelpSupportSheet(isPresented: $showHelp)
+            }
+            .sheet(isPresented: $showContact) {
+                ContactUsSheet(isPresented: $showContact)
+            }
+        }
     }
 } 

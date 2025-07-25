@@ -115,11 +115,10 @@ struct UserCard: View {
     var body: some View {
         if let user = user {
             ZStack(alignment: .bottom) {
-                // TEMP: Remove background image for testing
                 Color(.secondarySystemBackground)
-                // Gradient overlay
+                // Gradient overlay (use dynamic colors)
                 LinearGradient(
-                    gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.5)]),
+                    gradient: Gradient(colors: [Color.clear, Color(.systemBackground).opacity(0.7)]),
                     startPoint: .top, endPoint: .bottom
                 )
                 // User image at the top center and name below
@@ -137,14 +136,14 @@ struct UserCard: View {
                             }
                             .frame(width: 90, height: 90)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                            .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 2))
                         } else {
                             Image(systemName: "person.crop.circle.fill")
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 90, height: 90)
                                 .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 2))
                                 .foregroundColor(.gray)
                         }
                         Spacer()
@@ -152,7 +151,7 @@ struct UserCard: View {
                     Spacer().frame(height: 10)
                     Text(user.name)
                         .font(.title3).bold()
-                        .foregroundColor(.white)
+                        .foregroundColor(Color.primary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer()
@@ -170,27 +169,27 @@ struct UserCard: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Image(systemName: "location")
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.secondary)
                             Text(user.city ?? "")
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.secondary)
                             Spacer()
                             Image(systemName: "star.fill")
-                                .foregroundColor(.yellow)
+                                .foregroundColor(Color.yellow)
                             Text(String(format: "%.1f", user.rating ?? 0.0))
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.primary)
                         }
                         .font(.caption)
                         .lineLimit(1)
                         HStack {
                             Image(systemName: "globe")
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.secondary)
                             Text(user.workMode?.rawValue ?? "")
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.secondary)
                             Spacer()
                             Image(systemName: "music.note.list")
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.secondary)
                             Text(user.genres?.map { $0.rawValue }.joined(separator: ", ") ?? "")
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
@@ -207,9 +206,9 @@ struct UserCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.18), radius: 12, x: 0, y: 6)
+            .shadow(color: Color.primary.opacity(0.08), radius: 12, x: 0, y: 6)
             .contentShape(RoundedRectangle(cornerRadius: 28))
         }
     }

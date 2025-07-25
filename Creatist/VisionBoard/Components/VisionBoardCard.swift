@@ -90,8 +90,12 @@ struct VisionBoardCard: View {
     }
     
     var daysRemainingText: String {
-        let days = Calendar.current.dateComponents([.day], from: Date(), to: board.endDate).day ?? 0
-        return days > 0 ? "\(days) days to go" : "Ended"
+        let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            let end = calendar.startOfDay(for: board.endDate)
+            let days = calendar.dateComponents([.day], from: today, to: end).day ?? 0
+
+            return days > 0 ? "\(days) day\(days == 1 ? "" : "s") to go" : "Ended"
     }
 }
 
