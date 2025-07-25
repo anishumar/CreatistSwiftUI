@@ -134,7 +134,7 @@ See `Creatist/DataModel/DataModels.swift` for full details.
 ---
 
 ## Credits
-- Developed by Anish Umar and the Creatist Team.
+- Developed by Creatist Team.
 - Special thanks to all open-source contributors and the creative community.
 
 --- 
