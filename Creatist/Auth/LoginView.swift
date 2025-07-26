@@ -103,6 +103,8 @@ struct LoginView: View {
                 } else {
                     errorMessage = nil
                     isLoggedIn = true
+                    // Start token monitoring after successful login
+                    TokenMonitor.shared.startMonitoring()
                 }
             }
         }

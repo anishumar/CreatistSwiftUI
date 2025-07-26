@@ -270,6 +270,9 @@ struct ProfileView: View {
         KeychainHelper.remove("email")
         KeychainHelper.remove("password")
         KeychainHelper.remove("accessToken")
+        KeychainHelper.remove("refreshToken")
+        KeychainHelper.remove("tokenExpirationTime")
+        TokenMonitor.shared.stopMonitoring()
         isLoggedIn = false
     }
     
@@ -596,6 +599,17 @@ struct SettingsSheet: View {
                         }
                     }
                 }
+                #if DEBUG
+                Section(header: Text("Debug").foregroundColor(Color.secondary)) {
+                    NavigationLink(destination: TokenDebugView()) {
+                        Label {
+                            Text("Token Status").foregroundColor(Color.primary)
+                        } icon: {
+                            Image(systemName: "key.fill")
+                        }
+                    }
+                }
+                #endif
                 Section(header: Text("Account").foregroundColor(Color.secondary)) {
                     Button(role: .destructive, action: onLogout) {
                         Label {

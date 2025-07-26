@@ -29,6 +29,14 @@ class Creatist {
             KeychainHelper.set(password, forKey: "password")
             KeychainHelper.set(accessToken, forKey: "accessToken")
             KeychainHelper.set(refreshToken, forKey: "refreshToken")
+            
+            // Store token expiration time if provided
+            if let expiresIn = loginResponse?.expires_in {
+                let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
+                KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
+                print("🔐 Login: Token expiration set to \(expirationTime)")
+            }
+            
             await self.fetch()
             return true
         }

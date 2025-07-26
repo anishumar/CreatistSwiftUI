@@ -23,6 +23,74 @@ struct TokenRefreshResponse: Codable {
     let expires_in: Int?
 }
 
+// MARK: - Token Monitor
+class TokenMonitor: ObservableObject {
+    static let shared = TokenMonitor()
+    private var refreshTimer: Timer?
+    private let refreshBuffer: TimeInterval = 5 * 60 // 5 minutes before expiry
+    
+    private init() {}
+    
+    func startMonitoring() {
+        stopMonitoring()
+        
+        guard let expirationTime = getTokenExpirationTime() else {
+            print("🔍 TokenMonitor: No token expiration time found")
+            return
+        }
+        
+        let timeUntilRefresh = expirationTime.timeIntervalSinceNow - refreshBuffer
+        
+        if timeUntilRefresh > 0 {
+            print("🔍 TokenMonitor: Scheduling refresh in \(timeUntilRefresh) seconds")
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: timeUntilRefresh, repeats: false) { [weak self] _ in
+                Task {
+                    await self?.refreshTokenIfNeeded()
+                }
+            }
+        } else {
+            print("🔍 TokenMonitor: Token expires soon, refreshing immediately")
+            Task {
+                await refreshTokenIfNeeded()
+            }
+        }
+    }
+    
+    func stopMonitoring() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+    
+    private func refreshTokenIfNeeded() async {
+        guard let expirationTime = getTokenExpirationTime() else { return }
+        
+        let timeUntilExpiry = expirationTime.timeIntervalSinceNow
+        
+        if timeUntilExpiry <= refreshBuffer {
+            print("🔍 TokenMonitor: Token expires in \(timeUntilExpiry) seconds, refreshing...")
+            let success = await NetworkManager.shared.refreshToken()
+            if success {
+                print("🔍 TokenMonitor: Token refreshed successfully, restarting monitor")
+                await MainActor.run {
+                    startMonitoring()
+                }
+            } else {
+                print("🔍 TokenMonitor: Token refresh failed")
+            }
+        }
+    }
+    
+    private func getTokenExpirationTime() -> Date? {
+        guard let expirationString = KeychainHelper.get("tokenExpirationTime") else { return nil }
+        let expirationTime = Date(timeIntervalSince1970: Double(expirationString) ?? 0)
+        return expirationTime
+    }
+    
+    // MARK: - Public Helper Methods
+    
+
+}
+
 actor NetworkManager {
     // MARK: Public
     public static let shared: NetworkManager = .init()
@@ -73,6 +141,17 @@ actor NetworkManager {
     func patch<T: Codable>(url: String, body: Data?) async -> T? {
         return await request(url: url, method: "PATCH", body: body)
     }
+    
+    // MARK: - Token Management
+    
+    /// Check if the current access token is expired or will expire within the buffer time
+    private func isTokenExpiredOrExpiringSoon(buffer: TimeInterval = 5 * 60) async -> Bool {
+        guard let expirationString = KeychainHelper.get("tokenExpirationTime") else { return true }
+        let expirationTime = Date(timeIntervalSince1970: Double(expirationString) ?? 0)
+        
+        let timeUntilExpiry = expirationTime.timeIntervalSinceNow
+        return timeUntilExpiry <= buffer
+    }
 
     // MARK: Private
     private var delimiter: String = "\n"
@@ -102,6 +181,16 @@ actor NetworkManager {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // Only add Authorization header if not calling OTP or signup endpoints
         if !urlString.contains("/auth/otp") && !urlString.contains("/auth/signup") {
+            // Proactively refresh token if it's expired or expiring soon
+            if await isTokenExpiredOrExpiringSoon() {
+                print("🔍 NetworkManager: Token expired or expiring soon, refreshing before request")
+                let refreshed = await refreshToken()
+                if !refreshed {
+                    print("🔍 NetworkManager: Failed to refresh token before request")
+                    return nil
+                }
+            }
+            
             if let accessToken = KeychainHelper.get("accessToken") {
                 urlRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                 
@@ -109,28 +198,18 @@ actor NetworkManager {
         }
 
         do {
-            logger.debug("Preparing request: method=\(method, privacy: .public), url=\(url, privacy: .public), queryParameters=\(String(describing: queryParameters), privacy: .public), body=\(String(describing: body?.count), privacy: .public)")
             let (data, response) = try await URLSession.shared.data(for: urlRequest)
-
-            guard let response = response as? HTTPURLResponse else {
-                logger.error("Response is not HTTPURLResponse.")
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
                 return nil
             }
 
-            logger.debug("Response fetched, url=\(url, privacy: .public), status=\(response.statusCode, privacy: .public)")
-            print("🌐 NetworkManager: Response status: \(response.statusCode)")
-            print("🌐 NetworkManager: Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
-            
-            // Add specific logging for vision board users endpoint
-            let urlString = url.absoluteString
-            if urlString.contains("/visionboard/") && urlString.contains("/users") {
-                print("🔍 VISION BOARD USERS RESPONSE:")
-                print("   URL: \(url)")
-                print("   Status: \(response.statusCode)")
+            if httpResponse.statusCode != 200 {
+                print("   Status: \(httpResponse.statusCode)")
                 print("   Data: \(String(data: data, encoding: .utf8) ?? "nil")")
             }
 
-            if response.statusCode == 401 && retryOn401 {
+            if httpResponse.statusCode == 401 && retryOn401 {
                 // Try to refresh token
                 let refreshed = await refreshToken()
                 if refreshed {
@@ -140,12 +219,13 @@ actor NetworkManager {
                     // Log out user, clear tokens, redirect to login
                     KeychainHelper.remove("accessToken")
                     KeychainHelper.remove("refreshToken")
+                    KeychainHelper.remove("tokenExpirationTime")
                     print("Token refresh failed. Logging out user.")
                     return nil
                 }
             }
 
-            guard response.statusCode == 200 else {
+            guard httpResponse.statusCode == 200 else {
                 return nil
             }
 
@@ -206,7 +286,16 @@ actor NetworkManager {
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return false }
             let result = try JSONDecoder().decode(TokenRefreshResponse.self, from: data)
             KeychainHelper.set(result.access_token, forKey: "accessToken")
-            print("Token refreshed successfully.")
+            
+            // Store new expiration time if provided
+            if let expiresIn = result.expires_in {
+                let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
+                KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
+                print("Token refreshed successfully. New expiration: \(expirationTime)")
+            } else {
+                print("Token refreshed successfully.")
+            }
+            
             return true
         } catch {
             print("Token refresh error: \(error)")

@@ -49,8 +49,19 @@ struct MainAppContentView: View {
             Task {
                 if let autologin = await Creatist.shared.autologin(), autologin {
                     isLoggedIn = true
+                    // Start token monitoring when user is logged in
+                    TokenMonitor.shared.startMonitoring()
                 }
                 isLoading = false
+            }
+        }
+        .onChange(of: isLoggedIn) { newValue in
+            if newValue {
+                // Start monitoring when user logs in
+                TokenMonitor.shared.startMonitoring()
+            } else {
+                // Stop monitoring when user logs out
+                TokenMonitor.shared.stopMonitoring()
             }
         }
     }
