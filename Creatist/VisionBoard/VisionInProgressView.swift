@@ -189,9 +189,9 @@ struct VisionInProgressView: View {
                         // Plus icon for adding draft
                         PhotosPicker(selection: $draftPickerItem, matching: .any(of: [.images, .videos])) {
                             ZStack {
-                                Circle()
+                                RoundedRectangle(cornerRadius: 8)
                                     .fill(Color.accentColor.opacity(0.15))
-                                    .frame(width: 56, height: 56)
+                                    .frame(width: 100, height: 100)
                                 Image(systemName: "plus")
                                     .font(.title)
                                     .foregroundColor(.accentColor)
@@ -213,12 +213,12 @@ struct VisionInProgressView: View {
                                             selectedDrafts.insert(draft.id)
                                         }
                                     }) {
-                                        ZStack {
+                                        ZStack(alignment: .topTrailing) {
                                             if draft.mediaType == "video" {
                                                 Image(systemName: "video.fill")
                                                     .resizable()
                                                     .aspectRatio(contentMode: .fit)
-                                                    .frame(width: 56, height: 56)
+                                                    .frame(width: 100, height: 100)
                                                     .foregroundColor(.accentColor)
                                             } else {
                                                 AsyncImage(url: URL(string: draft.mediaUrl)) { phase in
@@ -232,17 +232,28 @@ struct VisionInProgressView: View {
                                                         ProgressView()
                                                     }
                                                 }
-                                                .frame(width: 56, height: 56)
+                                                .frame(width: 100, height: 100)
                                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                             }
+                                            // Selection indicator overlay (inside image)
+                                            Group {
+                                                if selectedDrafts.contains(draft.id) {
+                                                    Image(systemName: "checkmark.circle.fill")
+                                                        .font(.system(size: 22))
+                                                        .foregroundColor(.accentColor)
+                                                        .background(Color.white.clipShape(Circle()).frame(width: 24, height: 24))
+                                                } else {
+                                                    Image(systemName: "circle")
+                                                        .font(.system(size: 22))
+                                                        .foregroundColor(.white)
+                                                        .background(Color.black.opacity(0.3).clipShape(Circle()).frame(width: 24, height: 24))
+                                                }
+                                            }
+                                            .padding([.top, .trailing], 4)
                                             if selectedDrafts.contains(draft.id) {
                                                 RoundedRectangle(cornerRadius: 8)
                                                     .fill(Color.accentColor.opacity(0.4))
-                                                    .frame(width: 56, height: 56)
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .foregroundColor(.white)
-                                                    .background(Circle().fill(Color.accentColor))
-                                                    .offset(x: 18, y: -18)
+                                                    .frame(width: 100, height: 100)
                                             }
                                         }
                                     }
@@ -256,7 +267,7 @@ struct VisionInProgressView: View {
                                                 Image(systemName: "video.fill")
                                                     .resizable()
                                                     .aspectRatio(contentMode: .fit)
-                                                    .frame(width: 56, height: 56)
+                                                    .frame(width: 100, height: 100)
                                                     .foregroundColor(.accentColor)
                                             } else {
                                                 AsyncImage(url: URL(string: draft.mediaUrl)) { phase in
@@ -270,7 +281,7 @@ struct VisionInProgressView: View {
                                                         ProgressView()
                                                     }
                                                 }
-                                                .frame(width: 56, height: 56)
+                                                .frame(width: 100, height: 100)
                                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                             }
                                         }

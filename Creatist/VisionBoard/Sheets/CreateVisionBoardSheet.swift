@@ -21,6 +21,8 @@ struct CreateVisionBoardSheet: View {
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var showSuccess = false
+    @State private var showCreatorRoleSheet = false
+    @State private var creatorRole: UserGenre? = nil
 
     var body: some View {
         NavigationView {
@@ -33,6 +35,56 @@ struct CreateVisionBoardSheet: View {
                     DatePicker("Start Date", selection: $startDate, displayedComponents: .date)
                     DatePicker("End Date",   selection: $endDate,   displayedComponents: .date)
                 }
+                
+                // Creator Role Section
+                Section(header: Text("Your Role")) {
+                    HStack {
+                        if let currentUser = Creatist.shared.user {
+                            // Show current user info
+                            if let urlString = currentUser.profileImageUrl, let url = URL(string: urlString) {
+                                AsyncImage(url: url) { phase in
+                                    if let image = phase.image {
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    } else if phase.error != nil {
+                                        Image(systemName: "person.crop.circle.fill")
+                                            .resizable().aspectRatio(contentMode: .fill)
+                                            .foregroundColor(.gray)
+                                    } else {
+                                        ProgressView()
+                                    }
+                                }
+                                .frame(width: 32, height: 32)
+                                .clipShape(Circle())
+                            } else {
+                                Image(systemName: "person.crop.circle.fill")
+                                    .resizable()
+                                    .frame(width: 32, height: 32)
+                                    .clipShape(Circle())
+                                    .foregroundColor(.gray)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(currentUser.name)
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                if let role = creatorRole {
+                                    Text(role.rawValue.capitalized)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button(action: {
+                                showCreatorRoleSheet = true
+                            }) {
+                                Text(creatorRole == nil ? "Select Role" : "Change Role")
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
+                    }
+                }
+                
                 ForEach(selectedGenres, id: \ .self) { genre in
                     Section(header:
                         HStack {
@@ -96,7 +148,7 @@ struct CreateVisionBoardSheet: View {
                                 }
                             }
                         }
-                        // Add Creator and Manage All buttons
+                        // Add Creator button
                         HStack {
                             Button(action: {
                                 Task {
@@ -113,10 +165,6 @@ struct CreateVisionBoardSheet: View {
                                 Text(isLoadingCreators && showCreatorPickerForGenre == genre ? "Loading..." : "Add Creator")
                             }
                             Spacer()
-                            // Button(action: { /* Manage all logic */ }) {
-                            //     Text("Manage All")
-                            //         .font(.caption)
-                            // }
                         }
                     }
                 }
@@ -175,6 +223,7 @@ struct CreateVisionBoardSheet: View {
                             print("🔍 DEBUG: Vision Name: \(visionName)")
                             print("🔍 DEBUG: Selected Genres: \(selectedGenres.map { $0.rawValue })")
                             print("🔍 DEBUG: Selected Creators: \(selectedCreators)")
+                            print("🔍 DEBUG: Creator Role: \(creatorRole?.rawValue ?? "nil")")
                             
                             // Convert to new API format
                             let genres: [GenreCreate] = selectedGenres.map { genre in
@@ -186,30 +235,44 @@ struct CreateVisionBoardSheet: View {
                                 )
                             }
                             
-                                    // Create assignments with genre information
-        var assignments: [AssignmentCreate] = []
-        for (genreIndex, genre) in selectedGenres.enumerated() {
-            let creators = selectedCreators[genre] ?? []
-            for creator in creators {
-                let key = "\(genre.rawValue)-\(creator.id.uuidString)"
-                let details = creatorDetails[key] ?? CreatorAssignmentDetails()
-                let paymentAmount: Decimal? =
-                    (details.paymentType == .paid && !details.paymentAmount.isEmpty) ? Decimal(string: details.paymentAmount) : nil
-                
-                let assignment = AssignmentCreate(
-                    userId: creator.id,
-                    workType: WorkType(rawValue: details.workMode.rawValue) ?? .online,
-                    paymentType: details.paymentType,
-                    paymentAmount: paymentAmount,
-                    currency: "USD",
-                    genreName: genre.rawValue
-                )
-                assignments.append(assignment)
-            }
-        }
+                            // Create assignments with genre information
+                            var assignments: [AssignmentCreate] = []
                             
-                            print("🔍 DEBUG: Genres to create: \(genres.count)")
-                            print("🔍 DEBUG: Assignments to create: \(assignments.count)")
+                            // Add creator's assignment if role is selected
+                            if let creatorRole = creatorRole, let currentUser = Creatist.shared.user {
+                                let creatorDetails = CreatorAssignmentDetails() // Default details for creator
+                                let paymentAmount: Decimal? = (creatorDetails.paymentType == .paid && !creatorDetails.paymentAmount.isEmpty) ? Decimal(string: creatorDetails.paymentAmount) : nil
+                                
+                                let creatorAssignment = AssignmentCreate(
+                                    userId: currentUser.id,
+                                    workType: WorkType(rawValue: creatorDetails.workMode.rawValue) ?? .online,
+                                    paymentType: creatorDetails.paymentType,
+                                    paymentAmount: paymentAmount,
+                                    currency: "USD",
+                                    genreName: creatorRole.rawValue
+                                )
+                                assignments.append(creatorAssignment)
+                            }
+                            
+                            for (genreIndex, genre) in selectedGenres.enumerated() {
+                                let creators = selectedCreators[genre] ?? []
+                                for creator in creators {
+                                    let key = "\(genre.rawValue)-\(creator.id.uuidString)"
+                                    let details = creatorDetails[key] ?? CreatorAssignmentDetails()
+                                    let paymentAmount: Decimal? =
+                                        (details.paymentType == .paid && !details.paymentAmount.isEmpty) ? Decimal(string: details.paymentAmount) : nil
+                                    
+                                    let assignment = AssignmentCreate(
+                                        userId: creator.id,
+                                        workType: WorkType(rawValue: details.workMode.rawValue) ?? .online,
+                                        paymentType: details.paymentType,
+                                        paymentAmount: paymentAmount,
+                                        currency: "USD",
+                                        genreName: genre.rawValue
+                                    )
+                                    assignments.append(assignment)
+                                }
+                            }
                             
                             let success = await Creatist.shared.createVisionBoard(
                                 name: visionName,
@@ -220,63 +283,63 @@ struct CreateVisionBoardSheet: View {
                                 assignments: assignments
                             )
                             
-                            print("🔍 DEBUG: createVisionBoard returned: \(success)")
-                            
                             await MainActor.run {
                                 isLoading = false
                                 if success {
                                     showSuccess = true
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                        isPresented = false
-                                    }
                                 } else {
-                                    errorMessage = "Failed to create vision board."
+                                    errorMessage = "Failed to create vision board. Please try again."
                                     showError = true
                                 }
                             }
                         }
                     }
-                    .disabled(visionName.isEmpty || selectedGenres.isEmpty || isLoading)
-                }
-            }
-            .sheet(isPresented: Binding<Bool>(
-                get: { manageSheetGenre != nil && manageSheetCreator != nil },
-                set: { if !$0 { manageSheetGenre = nil; manageSheetCreator = nil } }
-            )) {
-                if let genre = manageSheetGenre, let creator = manageSheetCreator {
-                    ManageCreatorSheet(
-                        genre: genre,
-                        creator: creator,
-                        details: creatorDetails["\(genre.rawValue)-\(creator.id.uuidString)"] ?? CreatorAssignmentDetails(),
-                        onSave: { details in
-                            creatorDetails["\(genre.rawValue)-\(creator.id.uuidString)"] = details
-                            manageSheetGenre = nil
-                            manageSheetCreator = nil
-                        },
-                        onCancel: {
-                            manageSheetGenre = nil
-                            manageSheetCreator = nil
-                        }
-                    )
+                    .disabled(visionName.isEmpty || creatorRole == nil)
+                    .help(visionName.isEmpty ? "Please enter a vision name" : (creatorRole == nil ? "Please select your role" : ""))
                 }
             }
             .sheet(item: $showCreatorPickerForGenre) { genre in
                 CreatorPickerSheet(
                     genre: genre,
                     users: followingUsers,
-                    selected: selectedCreators[genre] ?? [], // Pass selected creators for this genre
+                    selected: selectedCreators[genre] ?? [],
                     onSelect: { user in
                         if selectedCreators[genre] == nil {
                             selectedCreators[genre] = []
                         }
-                        // Prevent duplicates
-                        if !(selectedCreators[genre]?.contains(where: { $0.id == user.id }) ?? false) {
-                            selectedCreators[genre]?.append(user)
-                        }
+                        selectedCreators[genre]?.append(user)
                         showCreatorPickerForGenre = nil
                     },
                     onCancel: { showCreatorPickerForGenre = nil }
                 )
+            }
+            .sheet(item: $manageSheetGenre) { genre in
+                if let creator = manageSheetCreator {
+                    ManageCreatorSheet(
+                        genre: genre,
+                        creator: creator,
+                        details: creatorDetails["\(genre.rawValue)-\(creator.id.uuidString)"] ?? CreatorAssignmentDetails()
+                    ) { details in
+                        creatorDetails["\(genre.rawValue)-\(creator.id.uuidString)"] = details
+                        manageSheetGenre = nil
+                        manageSheetCreator = nil
+                    } onCancel: {
+                        manageSheetGenre = nil
+                        manageSheetCreator = nil
+                    }
+                }
+            }
+            .confirmationDialog("Select Your Role", isPresented: $showCreatorRoleSheet, titleVisibility: .visible) {
+                ForEach(UserGenre.allCases, id: \ .self) { genre in
+                    Button(genre.rawValue.capitalized) {
+                        creatorRole = genre
+                        // Also add this genre to selected genres if not already there
+                        if !selectedGenres.contains(genre) {
+                            selectedGenres.append(genre)
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
             }
         }
     }
@@ -343,4 +406,4 @@ struct ManageCreatorSheet: View {
             }
         }
     }
-} 
+}

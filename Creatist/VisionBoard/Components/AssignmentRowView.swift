@@ -3,6 +3,7 @@ import Foundation
 
 struct AssignmentRowView: View {
     let assignment: GenreAssignment
+    let board: VisionBoard
     @State private var user: User? = nil
     @State private var isLoading = true
     static var userCache: [UUID: User] = [:] // Static cache for user info
@@ -13,6 +14,10 @@ struct AssignmentRowView: View {
         case .rejected: return .red
         default: return .orange
         }
+    }
+    
+    var isCreator: Bool {
+        return assignment.userId == board.createdBy
     }
 
     var body: some View {
@@ -48,8 +53,15 @@ struct AssignmentRowView: View {
                         .clipShape(Circle())
                     }
                 }
-                Text(user.name)
-                    .font(.body)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(user.name)
+                        .font(.body)
+                    if isCreator {
+                        Text("Creator")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                }
             } else {
                 Image(systemName: "person.crop.circle.badge.questionmark")
                     .resizable()
@@ -59,8 +71,10 @@ struct AssignmentRowView: View {
                 Text("Unknown")
             }
             Spacer()
-            Text(assignment.status.rawValue.capitalized)
-                .foregroundColor(statusColor)
+            if !isCreator {
+                Text(assignment.status.rawValue.capitalized)
+                    .foregroundColor(statusColor)
+            }
         }
         .onAppear {
             loadUser()

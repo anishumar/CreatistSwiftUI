@@ -126,7 +126,7 @@ struct VisionDetailView: View {
     @ViewBuilder
     private func assignmentRow(for assignment: GenreAssignment) -> some View {
         HStack {
-            AssignmentRowView(assignment: assignment)
+            AssignmentRowView(assignment: assignment, board: board)
             Spacer()
             if assignment.status == .pending {
                 remindButton(for: assignment)
