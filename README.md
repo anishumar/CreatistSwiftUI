@@ -6,6 +6,7 @@ Creatist is a collaborative platform for creators—artists, musicians, filmmake
 
 ## Table of Contents
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [App Structure](#app-structure)
 - [Core Modules](#core-modules)
 - [Data Model](#data-model)
@@ -27,6 +28,18 @@ Creatist is a collaborative platform for creators—artists, musicians, filmmake
 - **Authentication:** Secure login, signup, and OTP-based flows.
 - **Media Uploads:** Share images and videos in posts and projects.
 - **Privacy & Security:** Built-in privacy policy, terms of service, and secure data handling.
+
+---
+
+## Screenshots
+
+<div align="center">
+  <img src="screenshots/feed-view.png" alt="Feed View - Trending and Following Posts" width="250" />
+  <img src="screenshots/vision-board.png" alt="Vision Board - Project Management" width="250" />
+  <img src="screenshots/discover.png" alt="Discover - Find Creators by Genre" width="250" />
+</div>
+
+*From left to right: Feed with trending posts, Vision Board project management, and Discover creators by genre*
 
 ---
 
