@@ -75,6 +75,7 @@ struct ExpandedUserCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 HStack {
+                    Spacer()
                     CompactFollowButton(userId: user.id, viewModel: viewModel)
                     Spacer()
                 }

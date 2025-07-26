@@ -1,23 +1,22 @@
 import SwiftUI
-import Foundation
 
-struct AddUserSheet: View {
+struct CreatorPickerSheet: View {
     let genre: UserGenre
-    let assignedUserIds: [UUID] // Use user IDs for filtering
+    let users: [User]
+    let selected: [User] // Add this parameter
     let onSelect: (User) -> Void
     let onCancel: () -> Void
-    @State private var followers: [User] = []
     @State private var searchText: String = ""
     @State private var suggestions: [User] = []
-    @State private var isLoading = false
+    @State private var isLoadingSuggestions = false
 
-    var filteredFollowers: [User] {
-        let assignedSet = Set(assignedUserIds)
-        let availableFollowers = followers.filter { !assignedSet.contains($0.id) }
+    var filteredUsers: [User] {
+        let selectedIds = Set(selected.map { $0.id })
+        let availableUsers = users.filter { !selectedIds.contains($0.id) }
         if searchText.isEmpty {
-            return availableFollowers
+            return availableUsers
         } else {
-            return availableFollowers.filter { user in
+            return availableUsers.filter { user in
                 user.name.localizedCaseInsensitiveContains(searchText) ||
                 (user.username?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
@@ -25,9 +24,9 @@ struct AddUserSheet: View {
     }
 
     var filteredSuggestions: [User] {
-        let followerIds = Set(followers.map { $0.id })
-        let assignedSet = Set(assignedUserIds)
-        let filtered = suggestions.filter { !followerIds.contains($0.id) && !assignedSet.contains($0.id) }
+        let followingIds = Set(users.map { $0.id })
+        let selectedIds = Set(selected.map { $0.id })
+        let filtered = suggestions.filter { !followingIds.contains($0.id) && !selectedIds.contains($0.id) }
         if searchText.isEmpty {
             return filtered
         } else {
@@ -42,17 +41,17 @@ struct AddUserSheet: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 16) {
-                    ForEach(filteredFollowers, id: \ .id) { user in
+                    ForEach(filteredUsers, id: \ .id) { user in
                         DetailedUserCardNoFollowCompact(user: user)
                             .onTapGesture {
                                 onSelect(user)
                             }
                     }
-                    if isLoading {
+                    if isLoadingSuggestions {
                         ProgressView().padding()
                     } else if !filteredSuggestions.isEmpty {
                         Divider().padding(.vertical, 8)
-                        Text("Suggestions")
+                        Text("Suggestions for \(genre.rawValue.capitalized)")
                             .font(.headline)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal)
@@ -66,7 +65,7 @@ struct AddUserSheet: View {
                 }
                 .padding(.vertical)
             }
-            .navigationTitle("Add User")
+            .navigationTitle("Add Creator")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search by name or username")
             .toolbar {
@@ -75,15 +74,22 @@ struct AddUserSheet: View {
                 }
             }
             .task {
-                isLoading = true
-                if let userId = Creatist.shared.user?.id {
-                    followers = await Creatist.shared.fetchFollowing(for: userId, genre: genre)
-                } else {
-                    followers = []
-                }
-                suggestions = await Creatist.shared.fetchUsers(for: genre)
-                isLoading = false
+                isLoadingSuggestions = true
+                let genreSuggestions = await Creatist.shared.fetchUsers(for: genre)
+                suggestions = genreSuggestions
+                isLoadingSuggestions = false
             }
         }
+    }
+}
+
+// Custom environment key for image size
+private struct DetailedUserCardImageSizeKey: EnvironmentKey {
+    static let defaultValue: CGSize? = nil
+}
+extension EnvironmentValues {
+    var _detailedUserCardImageSize: CGSize? {
+        get { self[DetailedUserCardImageSizeKey.self] }
+        set { self[DetailedUserCardImageSizeKey.self] = newValue }
     }
 } 

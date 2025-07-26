@@ -158,7 +158,8 @@ struct UserCard: View {
                 }
                 // Bottom action and details overlay
                 VStack(spacing: 8) {
-                    HStack(spacing: 16) {
+                    HStack {
+                        Spacer()
                         CompactFollowButton(userId: user.id, viewModel: viewModel)
                             .frame(height: 36)
                         Spacer()

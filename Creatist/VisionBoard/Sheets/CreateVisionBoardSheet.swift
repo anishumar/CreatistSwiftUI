@@ -264,6 +264,7 @@ struct CreateVisionBoardSheet: View {
                 CreatorPickerSheet(
                     genre: genre,
                     users: followingUsers,
+                    selected: selectedCreators[genre] ?? [], // Pass selected creators for this genre
                     onSelect: { user in
                         if selectedCreators[genre] == nil {
                             selectedCreators[genre] = []
