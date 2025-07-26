@@ -3,10 +3,12 @@ import UIKit
 class TrendingCollectionViewController: UICollectionViewController {
     var posts: [PostWithDetails]
     var onPostSelected: ((PostWithDetails) -> Void)?
+    var onLoadMore: (() -> Void)?
 
-    init(posts: [PostWithDetails], onPostSelected: ((PostWithDetails) -> Void)? = nil) {
+    init(posts: [PostWithDetails], onPostSelected: ((PostWithDetails) -> Void)? = nil, onLoadMore: (() -> Void)? = nil) {
         self.posts = posts
         self.onPostSelected = onPostSelected
+        self.onLoadMore = onLoadMore
         let layout = UICollectionViewCompositionalLayout(section: TrendingCollectionViewController.getTrendingLayout())
         super.init(collectionViewLayout: layout)
     }
@@ -17,6 +19,7 @@ class TrendingCollectionViewController: UICollectionViewController {
         super.viewDidLoad()
         collectionView.register(TrendingPostCell.self, forCellWithReuseIdentifier: "TrendingPostCell")
         collectionView.backgroundColor = .clear
+        collectionView.delegate = self
     }
 
     override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -31,6 +34,18 @@ class TrendingCollectionViewController: UICollectionViewController {
 
     override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         onPostSelected?(posts[indexPath.item])
+    }
+    
+    // Infinite scrolling implementation
+    override func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let offsetY = scrollView.contentOffset.y
+        let contentHeight = scrollView.contentSize.height
+        let screenHeight = scrollView.frame.size.height
+        
+        // Load more when user scrolls to bottom (with some threshold)
+        if offsetY > contentHeight - screenHeight - 100 {
+            onLoadMore?()
+        }
     }
 
     static func getTrendingLayout() -> NSCollectionLayoutSection {

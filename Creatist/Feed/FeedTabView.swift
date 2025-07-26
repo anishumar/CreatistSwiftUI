@@ -40,9 +40,18 @@ struct FeedView: View {
                 } else {
                     if selectedSegment == 0 {
                         VStack(spacing: 0) {
-                            TrendingCollectionView(posts: posts) { post in
-                                selectedPost = post
-                            }
+                            TrendingCollectionView(
+                                posts: posts, 
+                                onPostSelected: { post in
+                                    selectedPost = post
+                                },
+                                onLoadMore: {
+                                    // Check if we need to load more posts for trending
+                                    if nextCursor != nil, !isLoadingMore {
+                                        loadMorePosts()
+                                    }
+                                }
+                            )
                             NavigationLink(
                                 destination: Group {
                                     if let post = selectedPost {
