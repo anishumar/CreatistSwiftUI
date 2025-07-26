@@ -34,9 +34,9 @@ Creatist is a collaborative platform for creators—artists, musicians, filmmake
 ## Screenshots
 
 <div align="center">
-  <img src="screenshots/feed-view.png" alt="Feed View - Trending and Following Posts" width="250" />
-  <img src="screenshots/vision-board.png" alt="Vision Board - Project Management" width="250" />
   <img src="screenshots/discover.png" alt="Discover - Find Creators by Genre" width="250" />
+  <img src="screenshots/vision-board.png" alt="Vision Board - Project Management" width="250" />
+  <img src="screenshots/feed-view.png" alt="Feed View - Trending and Following Posts" width="250" />
 </div>
 
 *From left to right: Feed with trending posts, Vision Board project management, and Discover creators by genre*
