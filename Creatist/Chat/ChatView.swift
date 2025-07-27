@@ -80,7 +80,9 @@ struct ChatView: View {
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
                                     }
+                                    avatarView(for: msg)
                                 } else {
+                                    avatarView(for: msg)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(msg.message)
                                             .padding(10)
