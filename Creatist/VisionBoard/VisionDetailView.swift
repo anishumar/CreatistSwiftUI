@@ -128,7 +128,7 @@ struct VisionDetailView: View {
         HStack {
             AssignmentRowView(assignment: assignment, board: board)
             Spacer()
-            if assignment.status == .pending {
+            if assignment.status == .pending && assignment.userId != Creatist.shared.user?.id {
                 remindButton(for: assignment)
             }
         }

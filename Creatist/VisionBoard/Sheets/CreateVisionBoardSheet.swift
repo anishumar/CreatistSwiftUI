@@ -22,7 +22,7 @@ struct CreateVisionBoardSheet: View {
     @State private var errorMessage = ""
     @State private var showSuccess = false
     @State private var showCreatorRoleSheet = false
-    @State private var creatorRole: UserGenre? = nil
+    @State private var creatorRole: UserGenre = UserGenre.allCases.first! // Default to first available genre
 
     var body: some View {
         NavigationView {
@@ -36,11 +36,9 @@ struct CreateVisionBoardSheet: View {
                     DatePicker("End Date",   selection: $endDate,   displayedComponents: .date)
                 }
                 
-                // Creator Role Section
                 Section(header: Text("Your Role")) {
                     HStack {
                         if let currentUser = Creatist.shared.user {
-                            // Show current user info
                             if let urlString = currentUser.profileImageUrl, let url = URL(string: urlString) {
                                 AsyncImage(url: url) { phase in
                                     if let image = phase.image {
@@ -66,17 +64,19 @@ struct CreateVisionBoardSheet: View {
                                 Text(currentUser.name)
                                     .font(.body)
                                     .fontWeight(.medium)
-                                if let role = creatorRole {
-                                    Text(role.rawValue.capitalized)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+                                Text(creatorRole.rawValue.capitalized)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                             Spacer()
-                            Button(action: {
-                                showCreatorRoleSheet = true
-                            }) {
-                                Text(creatorRole == nil ? "Select Role" : "Change Role")
+                            Menu {
+                                ForEach(UserGenre.allCases, id: \ .self) { genre in
+                                    Button(genre.rawValue.capitalized) {
+                                        creatorRole = genre
+                                    }
+                                }
+                            } label: {
+                                Text("Change Role")
                                     .font(.caption)
                                     .foregroundColor(.primary)
                             }
@@ -94,6 +94,13 @@ struct CreateVisionBoardSheet: View {
                                 // Remove genre and its creators
                                 selectedGenres.removeAll { $0 == genre }
                                 selectedCreators[genre] = nil
+                                if creatorRole == genre {
+                                    if let newRole = selectedGenres.first {
+                                        creatorRole = newRole
+                                    } else {
+                                        creatorRole = UserGenre.allCases.first!
+                                    }
+                                }
                             }) {
                                 Image(systemName: "trash")
                                     .foregroundColor(.red)
@@ -168,7 +175,7 @@ struct CreateVisionBoardSheet: View {
                         }
                     }
                 }
-                // Add Roles button always at the bottom
+                
                 Section {
                     Button(action: { showGenreSheet = true }) {
                         HStack {
@@ -190,6 +197,7 @@ struct CreateVisionBoardSheet: View {
                         Button("Cancel", role: .cancel) {}
                     }
                 }
+                
                 if isLoading {
                     Section {
                         HStack {
@@ -223,10 +231,15 @@ struct CreateVisionBoardSheet: View {
                             print("🔍 DEBUG: Vision Name: \(visionName)")
                             print("🔍 DEBUG: Selected Genres: \(selectedGenres.map { $0.rawValue })")
                             print("🔍 DEBUG: Selected Creators: \(selectedCreators)")
-                            print("🔍 DEBUG: Creator Role: \(creatorRole?.rawValue ?? "nil")")
+                            
+                            // Ensure creator's role is included in genres
+                            var allGenres = selectedGenres
+                            if !allGenres.contains(creatorRole) {
+                                allGenres.append(creatorRole)
+                            }
                             
                             // Convert to new API format
-                            let genres: [GenreCreate] = selectedGenres.map { genre in
+                            let genres: [GenreCreate] = allGenres.map { genre in
                                 GenreCreate(
                                     name: genre.rawValue,
                                     description: nil,
@@ -239,7 +252,7 @@ struct CreateVisionBoardSheet: View {
                             var assignments: [AssignmentCreate] = []
                             
                             // Add creator's assignment if role is selected
-                            if let creatorRole = creatorRole, let currentUser = Creatist.shared.user {
+                            if let currentUser = Creatist.shared.user {
                                 let creatorDetails = CreatorAssignmentDetails() // Default details for creator
                                 let paymentAmount: Decimal? = (creatorDetails.paymentType == .paid && !creatorDetails.paymentAmount.isEmpty) ? Decimal(string: creatorDetails.paymentAmount) : nil
                                 
@@ -249,7 +262,7 @@ struct CreateVisionBoardSheet: View {
                                     paymentType: creatorDetails.paymentType,
                                     paymentAmount: paymentAmount,
                                     currency: "USD",
-                                    genreName: creatorRole.rawValue
+                                    genreName: creatorRole.rawValue // Use the selected role
                                 )
                                 assignments.append(creatorAssignment)
                             }
@@ -286,7 +299,17 @@ struct CreateVisionBoardSheet: View {
                             await MainActor.run {
                                 isLoading = false
                                 if success {
+                                    // Clear form and close sheet
+                                    visionName = ""
+                                    visionDescription = ""
+                                    startDate = Date()
+                                    endDate = Date().addingTimeInterval(86400)
+                                    selectedGenres = []
+                                    selectedCreators = [:]
+                                    creatorDetails = [:]
+                                    creatorRole = UserGenre.allCases.first!
                                     showSuccess = true
+                                    isPresented = false
                                 } else {
                                     errorMessage = "Failed to create vision board. Please try again."
                                     showError = true
@@ -294,8 +317,8 @@ struct CreateVisionBoardSheet: View {
                             }
                         }
                     }
-                    .disabled(visionName.isEmpty || creatorRole == nil)
-                    .help(visionName.isEmpty ? "Please enter a vision name" : (creatorRole == nil ? "Please select your role" : ""))
+                    .disabled(visionName.isEmpty)
+                    .help(visionName.isEmpty ? "Please enter a vision name" : "")
                 }
             }
             .sheet(item: $showCreatorPickerForGenre) { genre in
@@ -308,6 +331,9 @@ struct CreateVisionBoardSheet: View {
                             selectedCreators[genre] = []
                         }
                         selectedCreators[genre]?.append(user)
+                        if !selectedGenres.contains(genre) {
+                            selectedGenres.append(genre)
+                        }
                         showCreatorPickerForGenre = nil
                     },
                     onCancel: { showCreatorPickerForGenre = nil }
@@ -332,11 +358,10 @@ struct CreateVisionBoardSheet: View {
             .confirmationDialog("Select Your Role", isPresented: $showCreatorRoleSheet, titleVisibility: .visible) {
                 ForEach(UserGenre.allCases, id: \ .self) { genre in
                     Button(genre.rawValue.capitalized) {
-                        creatorRole = genre
-                        // Also add this genre to selected genres if not already there
-                        if !selectedGenres.contains(genre) {
-                            selectedGenres.append(genre)
-                        }
+                        // This logic is no longer needed as the role is always 'admin'
+                        // if !selectedGenres.contains(genre) {
+                        //     selectedGenres.append(genre)
+                        // }
                     }
                 }
                 Button("Cancel", role: .cancel) {}

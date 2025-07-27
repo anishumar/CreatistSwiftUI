@@ -88,7 +88,7 @@ if let expiresIn = response.expires_in {
 ### Proactive Request Validation
 ```swift
 // Before making authenticated requests:
-if NetworkManager.isTokenExpiredOrExpiringSoon() {
+if await isTokenExpiredOrExpiringSoon() {
     let refreshed = await refreshToken()
     if !refreshed {
         return nil // Request will fail
@@ -109,14 +109,7 @@ if timeUntilRefresh > 0 {
 
 ## Debug Tools
 
-### TokenDebugView
-- **Location**: `Creatist/DataController/TokenDebugView.swift`
-- **Access**: Settings → Debug → Token Status (DEBUG builds only)
-- **Features**:
-  - Real-time token status monitoring
-  - Manual token refresh button
-  - Time until expiration display
-  - Monitor restart functionality
+*No debug view is present in production or development builds. All token refresh logic is automatic and transparent to the user.*
 
 ## Benefits
 
@@ -124,27 +117,25 @@ if timeUntilRefresh > 0 {
 2. **Battery Efficient**: Only monitors when app is active
 3. **Secure**: All tokens stored in Keychain
 4. **Robust**: Multiple fallback mechanisms
-5. **Debug Friendly**: Built-in monitoring tools
 
 ## Testing
 
 ### Manual Testing
 1. Log in to the app
-2. Go to Settings → Debug → Token Status
-3. Monitor the countdown timer
+2. Wait for token expiration (or set a short expiry in backend for testing)
+3. Monitor the app logs for automatic refresh events
 4. Verify automatic refresh when timer reaches 0
 
 ### Simulating Token Expiry
-1. Use the debug view to see current token status
-2. Wait for token to expire naturally (15 minutes)
-3. Or manually trigger refresh to test the flow
+1. Wait for token to expire naturally (15 minutes)
+2. Or manually trigger refresh via API tools if needed
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **Token not refreshing automatically**
-   - Check if TokenMonitor is started (debug view)
+   - Check if TokenMonitor is started (see logs)
    - Verify expiration time is stored correctly
    - Check network connectivity
 
@@ -160,11 +151,11 @@ if timeUntilRefresh > 0 {
 
 ### Debug Commands
 ```swift
-// Check token status
-NetworkManager.isTokenExpiredOrExpiringSoon()
+// Check token status manually in code
+await isTokenExpiredOrExpiringSoon()
 
 // Get time until expiration
-NetworkManager.getTimeUntilTokenExpiration()
+// (add a print statement or breakpoint in TokenMonitor)
 
 // Manually refresh token
 await NetworkManager.shared.refreshToken()
