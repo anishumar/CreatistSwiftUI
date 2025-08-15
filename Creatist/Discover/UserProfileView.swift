@@ -237,7 +237,7 @@ struct UserProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(isPresented: $showDirectChat) {
             if let currentUser = Creatist.shared.user, let otherUser = user {
-                let urlString = "ws://localhost:8080/ws/message/\(otherUser.id.uuidString)?token=\(KeychainHelper.get("accessToken") ?? "")"
+                let urlString = EnvironmentConfig.shared.wsURL(for: "/ws/message/\(otherUser.id.uuidString)?token=\(KeychainHelper.get("accessToken") ?? "")")
                 if let url = URL(string: urlString) {
                     ChatView(
                         manager: ChatWebSocketManager(

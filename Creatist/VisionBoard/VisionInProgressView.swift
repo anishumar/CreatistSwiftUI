@@ -73,7 +73,7 @@ struct VisionInProgressView: View {
 
             Button(action: {
                 if let user = Creatist.shared.user {
-                    let urlString = "ws://localhost:8080/ws/visionboard/\(board.id.uuidString)/group-chat?token=\(KeychainHelper.get("accessToken") ?? "")"
+                    let urlString = EnvironmentConfig.shared.wsURL(for: "/ws/visionboard/\(board.id.uuidString)/group-chat?token=\(KeychainHelper.get("accessToken") ?? "")")
                     if let url = URL(string: urlString) {
                         groupChatManager = ChatWebSocketManager(
                             url: url,
@@ -359,7 +359,7 @@ struct VisionInProgressView: View {
                 } else {
                     ProgressView("Initializing chat...")
                         .onAppear {
-                            let urlString = "ws://localhost:8080/ws/visionboard/\(board.id.uuidString)/group-chat?token=\(KeychainHelper.get("accessToken") ?? "")"
+                            let urlString = EnvironmentConfig.shared.wsURL(for: "/ws/visionboard/\(board.id.uuidString)/group-chat?token=\(KeychainHelper.get("accessToken") ?? "")")
                             if let url = URL(string: urlString) {
                                 groupChatManager = ChatWebSocketManager(
                                     url: url,

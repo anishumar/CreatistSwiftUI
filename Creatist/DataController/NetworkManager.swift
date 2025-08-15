@@ -2,7 +2,12 @@ import Foundation
 import OSLog
 
 private let logger: Logger = .init(subsystem: "com.None.NetworkManager", category: "Network")
-private let endpoint = "http://localhost:8080"
+
+// Production logging
+private func log(_ message: String, level: ProductionLogger.LogLevel = .info) {
+    ProductionLogger.log(message, level: level)
+}
+private let endpoint = EnvironmentConfig.shared.apiBaseURL
 
 enum HTTPMethod: String {
     case GET
@@ -98,32 +103,32 @@ actor NetworkManager {
 
     // MARK: Internal
     func get<T: Codable>(url: String, queryParameters: [String: Any]? = nil) async -> T? {
-        print("🌐 NetworkManager: GET \(url)")
+        log("🌐 NetworkManager: GET \(url)")
         if let queryParameters = queryParameters {
-            print("🌐 NetworkManager: Query parameters: \(queryParameters)")
+            log("🌐 NetworkManager: Query parameters: \(queryParameters)")
         }
         
         let result: T? = await request(url: url, method: "GET", queryParameters: queryParameters)
         
         if let result = result {
-            print("🌐 NetworkManager: GET \(url) - SUCCESS")
+            log("🌐 NetworkManager: GET \(url) - SUCCESS")
         } else {
-            print("🌐 NetworkManager: GET \(url) - FAILED")
+            log("🌐 NetworkManager: GET \(url) - FAILED", level: .error)
         }
         
         return result
     }
 
     func post<T: Codable>(url: String, body: Data?) async -> T? {
-        print("🌐 NetworkManager: POST \(url)")
-        print("🌐 NetworkManager: Body: \(String(data: body ?? Data(), encoding: .utf8) ?? "nil")")
+        log("🌐 NetworkManager: POST \(url)")
+        log("🌐 NetworkManager: Body: \(String(data: body ?? Data(), encoding: .utf8) ?? "nil")")
         
         let result: T? = await request(url: url, method: "POST", body: body)
         
         if let result {
-            print("🌐 NetworkManager: POST \(url) - SUCCESS")
+            log("🌐 NetworkManager: POST \(url) - SUCCESS")
         } else {
-            print("🌐 NetworkManager: POST \(url) - FAILED")
+            log("🌐 NetworkManager: POST \(url) - FAILED", level: .error)
         }
         
         return result
@@ -157,7 +162,7 @@ actor NetworkManager {
     private var delimiter: String = "\n"
 
     private func request<T: Codable>(url: String = "", method: String, body: Data? = nil, queryParameters: [String: Any]? = nil, retryOn401: Bool = true) async -> T? {
-        var urlString = "\(endpoint)\(url)"
+        var urlString = "\(EnvironmentConfig.shared.apiBaseURL)\(url)"
 
         if let queryParameters, !queryParameters.isEmpty {
             var urlComponents = URLComponents(string: urlString)
@@ -275,7 +280,7 @@ actor NetworkManager {
 
     func refreshToken() async -> Bool {
         guard let refreshToken = KeychainHelper.get("refreshToken") else { return false }
-        guard let url = URL(string: endpoint + "/auth/refresh") else { return false }
+        guard let url = URL(string: EnvironmentConfig.shared.apiBaseURL + "/auth/refresh") else { return false }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -305,7 +310,7 @@ actor NetworkManager {
     }
 
     func patch(url: String, body: Data?) async -> Response? {
-        guard let url = URL(string: endpoint + url) else { return nil }
+        guard let url = URL(string: EnvironmentConfig.shared.apiBaseURL + url) else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.httpBody = body
