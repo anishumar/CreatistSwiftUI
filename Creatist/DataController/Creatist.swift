@@ -16,7 +16,6 @@ class Creatist {
         guard let data = credentials.toData() else {
             return nil
         }
-        await self.fetch()
         return await NetworkManager.shared.post(url: "/auth/signin", body: data)
     }
     
@@ -46,12 +45,24 @@ class Creatist {
     func autologin() async -> Bool? {
         let email = KeychainHelper.get("email")
         let password = KeychainHelper.get("password")
-        await self.fetch()
         guard let email, let password else {
             return false
         }
         let response = await _login(email: email, password: password)
-        return response?.message == "success"
+        if response?.message == "success",
+           let accessToken = response?.access_token,
+           let refreshToken = response?.refresh_token {
+            KeychainHelper.set(accessToken, forKey: "accessToken")
+            KeychainHelper.set(refreshToken, forKey: "refreshToken")
+            if let expiresIn = response?.expires_in {
+                let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
+                KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
+                print("🔐 Autologin: Token expiration set to \(expirationTime)")
+            }
+            await self.fetch()
+            return true
+        }
+        return false
     }
     
     func signup(_ user: User) async -> Bool {

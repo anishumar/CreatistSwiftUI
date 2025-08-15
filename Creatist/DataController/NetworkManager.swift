@@ -179,8 +179,9 @@ actor NetworkManager {
         }
 
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // Only add Authorization header if not calling OTP or signup endpoints
-        if !urlString.contains("/auth/otp") && !urlString.contains("/auth/signup") {
+        // Only add Authorization header and attempt refresh for authenticated endpoints
+        // Exclude unauthenticated auth endpoints like otp, signup, and signin
+        if !urlString.contains("/auth/otp") && !urlString.contains("/auth/signup") && !urlString.contains("/auth/signin") {
             // Proactively refresh token if it's expired or expiring soon
             if await isTokenExpiredOrExpiringSoon() {
                 print("🔍 NetworkManager: Token expired or expiring soon, refreshing before request")
