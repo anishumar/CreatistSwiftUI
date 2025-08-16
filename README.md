@@ -2,6 +2,27 @@
 
 Creatist is a collaborative platform for creators—artists, musicians, filmmakers, designers, and more—to connect, share, and bring their visions to life. Built with SwiftUI, Creatist offers a seamless experience for discovering talent, managing projects, and fostering creative collaboration.
 
+## 📊 Project Statistics
+
+[![Contributors](https://img.shields.io/github/contributors/anishumar/CreatistSwiftUI.svg)](https://github.com/anishumar/CreatistSwiftUI/graphs/contributors)
+[![Last Commit](https://img.shields.io/github/last-commit/anishumar/CreatistSwiftUI.svg)](https://github.com/anishumar/CreatistSwiftUI/commits)
+[![Commits per Month](https://img.shields.io/github/commit-activity/m/anishumar/CreatistSwiftUI.svg)](https://github.com/anishumar/CreatistSwiftUI/graphs/commit-activity)
+[![Open Issues](https://img.shields.io/github/issues/anishumar/CreatistSwiftUI.svg)](https://github.com/anishumar/CreatistSwiftUI/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/anishumar/CreatistSwiftUI.svg)](https://github.com/anishumar/CreatistSwiftUI/pulls)
+
+## 🛠️ Technology Stack
+
+[![Swift](https://img.shields.io/badge/Swift-5.0-orange.svg)](https://swift.org)
+[![iOS](https://img.shields.io/badge/iOS-15.0+-blue.svg)](https://developer.apple.com/ios/)
+[![SwiftUI](https://img.shields.io/badge/SwiftUI-4.0-blue.svg)](https://developer.apple.com/xcode/swiftui/)
+[![Xcode](https://img.shields.io/badge/Xcode-14.0+-blue.svg)](https://developer.apple.com/xcode/)
+
+## 📱 App Status
+
+[![TestFlight](https://img.shields.io/badge/TestFlight-Available-green.svg)](https://testflight.apple.com)
+[![App Store](https://img.shields.io/badge/App%20Store-Coming%20Soon-orange.svg)](https://apps.apple.com)
+[![License](https://img.shields.io/github/license/anishumar/CreatistSwiftUI.svg)](https://github.com/anishumar/CreatistSwiftUI/blob/main/LICENSE)
+
 ---
 
 ## Table of Contents
