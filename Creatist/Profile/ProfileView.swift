@@ -82,7 +82,7 @@ struct ProfileView: View {
                             HStack(spacing: 24) {
                                 StatView(number: Double(followersCount), label: "Followers")
                                 StatView(number: Double(followingCount), label: "Following")
-                                StatView(number: 0, label: "Projects")
+                                StatView(number: Double(myPosts.count), label: "Projects")
                                 StatView(number: user.rating ?? 0, label: "Rating", isDouble: true)
                             }
                             .padding(.top, 8)
@@ -236,8 +236,8 @@ struct ProfileView: View {
             .sheet(isPresented: $showCreatePostSheet) {
                 CreateSelfPostSheet(onPost: {
                     showCreatePostSheet = false
-                    // Optionally refresh user's posts here
-                    if selectedSection == 0, let user = currentUser {
+                    // Refresh posts to update count
+                    if let user = currentUser {
                         Task { await loadMyPosts(for: user.id) }
                     }
                 })
@@ -254,15 +254,12 @@ struct ProfileView: View {
             if let user = currentUser {
                 followersCount = await Creatist.shared.fetchFollowersCount(for: user.id.uuidString)
                 followingCount = await Creatist.shared.fetchFollowingCount(for: user.id.uuidString)
-                if selectedSection == 0 {
-                    await loadMyPosts(for: user.id)
-                }
+                // Always load posts to get accurate count
+                await loadMyPosts(for: user.id)
             }
         }
         .onChange(of: selectedSection) { newValue in
-            if newValue == 0, let user = currentUser {
-                Task { await loadMyPosts(for: user.id) }
-            }
+            // Posts are already loaded, no need to reload
         }
     }
     

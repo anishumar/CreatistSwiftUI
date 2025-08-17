@@ -79,7 +79,7 @@ struct UserProfileView: View {
                         HStack(spacing: 24) {
                             StatView(number: Double(followersCount), label: "Followers")
                             StatView(number: Double(followingCount), label: "Following")
-                            StatView(number: 0, label: "Projects")
+                            StatView(number: Double(userPosts.count), label: "Projects")
                             StatView(number: user.rating ?? 0, label: "Rating", isDouble: true)
                         }
                         .padding(.top, 8)
@@ -261,15 +261,12 @@ struct UserProfileView: View {
             if let user = user {
                 followersCount = await Creatist.shared.fetchFollowersCount(for: user.id.uuidString)
                 followingCount = await Creatist.shared.fetchFollowingCount(for: user.id.uuidString)
-                if selectedSection == 0 {
-                    await loadUserPosts(for: user.id)
-                }
+                // Always load posts to get accurate count
+                await loadUserPosts(for: user.id)
             }
         }
         .onChange(of: selectedSection) { newValue in
-            if newValue == 0, let user = user {
-                Task { await loadUserPosts(for: user.id) }
-            }
+            // Posts are already loaded, no need to reload
         }
     }
 
