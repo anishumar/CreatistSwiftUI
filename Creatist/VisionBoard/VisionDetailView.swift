@@ -128,7 +128,7 @@ struct VisionDetailView: View {
         HStack {
             AssignmentRowView(assignment: assignment, board: board)
             Spacer()
-            if assignment.status == .pending && assignment.userId != Creatist.shared.user?.id {
+            if shouldShowRemindButton(for: assignment) {
                 remindButton(for: assignment)
             }
         }
@@ -229,6 +229,12 @@ struct VisionDetailView: View {
     private func shouldShowReplaceButton() -> Bool {
         guard let userId = Creatist.shared.user?.id else { return false }
         return board.createdBy == userId
+    }
+    
+    private func shouldShowRemindButton(for assignment: GenreAssignment) -> Bool {
+        guard let userId = Creatist.shared.user?.id else { return false }
+        // Only the board admin can remind, and never for themselves
+        return board.createdBy == userId && assignment.status == .pending && assignment.userId != userId
     }
     
     private func loadFollowing(for genre: GenreWithAssignments) {
