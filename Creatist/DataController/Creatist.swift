@@ -19,6 +19,10 @@ class Creatist {
         return await NetworkManager.shared.post(url: "/auth/signin", body: data)
     }
     
+    func clearUserCache() {
+                visionBoardUserCache.removeAll()
+            }
+    
     func login(email: String, password: String) async -> Bool {
         let loginResponse: LoginResponse? = await _login(email: email, password: password)
         if loginResponse?.message == "success",

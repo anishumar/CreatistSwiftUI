@@ -282,6 +282,7 @@ struct VisionDetailView: View {
     private func addUserToGenre(user: User, genreId: UUID) {
         Task {
             let _ = await Creatist.shared.addAssignmentAndInvite(genreId: genreId, user: user, board: board)
+            Creatist.shared.clearUserCache()
             isLoading = true
             genres = await Creatist.shared.fetchGenresAndAssignments(for: board)
             isLoading = false
