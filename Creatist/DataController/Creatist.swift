@@ -132,6 +132,33 @@ class Creatist {
         return []
     }
     
+    func searchUsers(query: String) async -> [User] {
+        print("🔍 Searching users for query: '\(query)'")
+        
+        // Fetch users from all genres and filter locally
+        var allUsers: [User] = []
+        
+        // Get users from each genre
+        for genre in UserGenre.allCases {
+            let users = await fetchUsers(for: genre)
+            allUsers.append(contentsOf: users)
+        }
+        
+        // Remove duplicates based on user ID
+        let uniqueUsers = Array(Set(allUsers.map { $0.id })).compactMap { userId in
+            allUsers.first { $0.id == userId }
+        }
+        
+        // Filter by search query
+        let filteredUsers = uniqueUsers.filter { user in
+            user.name.localizedCaseInsensitiveContains(query) ||
+            (user.username?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+        
+        print("🔍 Found \(filteredUsers.count) users matching '\(query)' out of \(uniqueUsers.count) total users")
+        return filteredUsers
+    }
+    
     func updateUserLocation(latitude: Double, longitude: Double) async -> Bool {
         let location = Location(latitude: latitude, longitude: longitude)
         guard let data = try? JSONEncoder().encode(location) else { return false }
