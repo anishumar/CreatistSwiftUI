@@ -13,7 +13,7 @@ struct FeedView: View {
     @State private var selectedPost: PostWithDetails? = nil
     @State private var showChatList = false
     let segments = ["Trending", "Following"]
-    let pageSize = 10
+    let pageSize = 20
 
     var body: some View {
         NavigationStack {
@@ -29,10 +29,11 @@ struct FeedView: View {
                         }
                     }
                     .pickerStyle(SegmentedPickerStyle())
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 0)
                 }
-                .padding(.vertical, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 4)
                 if isLoading && posts.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let errorMessage = errorMessage {
@@ -52,6 +53,7 @@ struct FeedView: View {
                                     }
                                 }
                             )
+                            .padding(.horizontal, 12)
                             NavigationLink(
                                 destination: Group {
                                     if let post = selectedPost {
@@ -101,6 +103,7 @@ struct FeedView: View {
                             .listStyle(PlainListStyle())
                             .refreshable { await reloadPosts() }
                         }
+                        .padding(.horizontal, 2)
                         .padding(.top, 8)
                     }
                 }
