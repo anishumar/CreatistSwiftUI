@@ -13,9 +13,12 @@ struct UserProfileView: View {
     @State private var selectedPost: PostWithDetails? = nil
     @State private var userCache: [UUID: User] = [:]
 
+    @State private var fetchedUser: User? = nil
+    
     var user: User? {
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
-        viewModel.nearbyUsers.first(where: { $0.id == userId })
+        viewModel.nearbyUsers.first(where: { $0.id == userId }) ??
+        fetchedUser
     }
 
     var body: some View {
@@ -258,6 +261,11 @@ struct UserProfileView: View {
             }
         }
         .task {
+            // If user is not found in view model, fetch it directly
+            if user == nil {
+                fetchedUser = await Creatist.shared.fetchUserById(userId: userId)
+            }
+            
             if let user = user {
                 followersCount = await Creatist.shared.fetchFollowersCount(for: user.id.uuidString)
                 followingCount = await Creatist.shared.fetchFollowingCount(for: user.id.uuidString)
