@@ -51,9 +51,9 @@ struct ChatView: View {
                 Button(action: { dismiss() }) {
                     Image(systemName: "chevron.left")
                         .font(.title2)
-                        .padding(.trailing, 4)
                 }
-                Text(title)
+                Spacer()
+                Text(title.replacingOccurrences(of: "Chat with ", with: ""))
                     .font(.headline)
                 Spacer()
                 Circle()
