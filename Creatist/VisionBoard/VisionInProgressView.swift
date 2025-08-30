@@ -26,6 +26,18 @@ struct VisionInProgressView: View {
     @State private var showCreatePostSheet = false
     @State private var boardGenres: [String] = []
     @State private var showDetails = false
+    
+    // Check if current user is the vision board owner
+    var isVisionBoardOwner: Bool {
+        guard let currentUserId = Creatist.shared.user?.id else { return false }
+        return board.createdBy == currentUserId
+    }
+    
+    // Check if current user can delete a specific draft (only if they uploaded it)
+    func canDeleteDraft(_ draft: Draft) -> Bool {
+        guard let currentUserId = Creatist.shared.user?.id else { return false }
+        return draft.userId == currentUserId
+    }
 
     var body: some View {
         VStack(spacing: 32) {
@@ -115,6 +127,7 @@ struct VisionInProgressView: View {
                     Text("Drafts")
                         .font(.headline)
                         .foregroundColor(Color.primary)
+
                     Spacer()
                     if isSelectingDrafts {
                         Button(action: {
@@ -137,8 +150,11 @@ struct VisionInProgressView: View {
                                     isUploadingDraft = true
                                     let idsToDelete = selectedDrafts
                                     for draftId in idsToDelete {
-                                        if await Creatist.shared.deleteDraft(draftId: draftId) {
-                                            withAnimation { drafts.removeAll { $0.id == draftId } }
+                                        if let draft = drafts.first(where: { $0.id == draftId }),
+                                           canDeleteDraft(draft) {
+                                            if await Creatist.shared.deleteDraft(draftId: draftId) {
+                                                withAnimation { drafts.removeAll { $0.id == draftId } }
+                                            }
                                         }
                                     }
                                     isUploadingDraft = false
@@ -155,6 +171,10 @@ struct VisionInProgressView: View {
                                     .background(Circle().fill(Color(.systemGray4)))
                             }
                             .buttonStyle(.plain)
+                            .disabled(selectedDrafts.allSatisfy { draftId in
+                                guard let draft = drafts.first(where: { $0.id == draftId }) else { return false }
+                                return !canDeleteDraft(draft)
+                            })
                             Button(action: {
                                 showCreatePostSheet = true
                             }) {
@@ -166,6 +186,8 @@ struct VisionInProgressView: View {
                                     .background(Capsule().fill(Color(.systemGray5)))
                             }
                             .buttonStyle(.plain)
+                            .disabled(!isVisionBoardOwner)
+                            .opacity(isVisionBoardOwner ? 1.0 : 0.5)
                         }
                     } else {
                         Button(action: {
@@ -182,6 +204,8 @@ struct VisionInProgressView: View {
                                 .background(Capsule().fill(Color(.systemGray5)))
                         }
                         .buttonStyle(.plain)
+                        .disabled(!isVisionBoardOwner)
+                        .opacity(isVisionBoardOwner ? 1.0 : 0.5)
                     }
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -209,7 +233,7 @@ struct VisionInProgressView: View {
                                     Button(action: {
                                         if selectedDrafts.contains(draft.id) {
                                             selectedDrafts.remove(draft.id)
-                                        } else {
+                                        } else if canDeleteDraft(draft) {
                                             selectedDrafts.insert(draft.id)
                                         }
                                     }) {
@@ -242,17 +266,26 @@ struct VisionInProgressView: View {
                                                         .font(.system(size: 22))
                                                         .foregroundColor(.accentColor)
                                                         .background(Color.white.clipShape(Circle()).frame(width: 24, height: 24))
-                                                } else {
+                                                } else if canDeleteDraft(draft) {
                                                     Image(systemName: "circle")
                                                         .font(.system(size: 22))
                                                         .foregroundColor(.white)
                                                         .background(Color.black.opacity(0.3).clipShape(Circle()).frame(width: 24, height: 24))
+                                                } else {
+                                                    Image(systemName: "slash.circle")
+                                                        .font(.system(size: 22))
+                                                        .foregroundColor(.gray)
+                                                        .background(Color.white.clipShape(Circle()).frame(width: 24, height: 24))
                                                 }
                                             }
                                             .padding([.top, .trailing], 4)
                                             if selectedDrafts.contains(draft.id) {
                                                 RoundedRectangle(cornerRadius: 8)
                                                     .fill(Color.accentColor.opacity(0.4))
+                                                    .frame(width: 100, height: 100)
+                                            } else if !canDeleteDraft(draft) {
+                                                RoundedRectangle(cornerRadius: 8)
+                                                    .fill(Color.gray.opacity(0.3))
                                                     .frame(width: 100, height: 100)
                                             }
                                         }
@@ -291,11 +324,13 @@ struct VisionInProgressView: View {
                                             selectedDraft = draft
                                             showEditDraftSheet = true
                                         }
-                                        Button(role: .destructive) {
-                                            draftToDelete = draft
-                                            showDeleteDraftAlert = true
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
+                                        if canDeleteDraft(draft) {
+                                            Button(role: .destructive) {
+                                                draftToDelete = draft
+                                                showDeleteDraftAlert = true
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
                                         }
                                     }
                                 }
@@ -409,7 +444,7 @@ struct VisionInProgressView: View {
             }
         }) {
             let selected = drafts.filter { selectedDrafts.contains($0.id) }
-            CreatePostSheet(drafts: selected, genres: boardGenres) {
+            CreatePostSheet(drafts: selected, genres: boardGenres, board: board) {
                 showCreatePostSheet = false
             }
         }
@@ -605,6 +640,7 @@ struct EditDraftSheet: View {
 struct CreatePostSheet: View {
     let drafts: [Draft]
     let genres: [String]
+    let board: VisionBoard
     var onPost: () -> Void
     @State private var title: String = ""
     @State private var description: String = ""
@@ -688,6 +724,13 @@ struct CreatePostSheet: View {
                             let newPostId = UUID()
                             guard let userId = Creatist.shared.user?.id else {
                                 postError = "User not found"; isPosting = false; return
+                            }
+                            
+                            // Verify ownership before posting
+                            guard board.createdBy == userId else {
+                                postError = "Only the vision board owner can post from drafts"; 
+                                isPosting = false; 
+                                return
                             }
                             // 1. Upload all media to Supabase Storage (if not already in posts bucket)
                             var mediaArray: [PostMediaCreate] = []
