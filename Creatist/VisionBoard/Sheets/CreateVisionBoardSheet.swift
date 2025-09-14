@@ -339,8 +339,14 @@ struct CreateVisionBoardSheet: View {
                     onCancel: { showCreatorPickerForGenre = nil }
                 )
             }
-            .sheet(item: $manageSheetGenre) { genre in
-                if let creator = manageSheetCreator {
+            .sheet(isPresented: Binding(
+                get: { manageSheetGenre != nil && manageSheetCreator != nil },
+                set: { if !$0 { 
+                    manageSheetGenre = nil
+                    manageSheetCreator = nil
+                }}
+            )) {
+                if let genre = manageSheetGenre, let creator = manageSheetCreator {
                     ManageCreatorSheet(
                         genre: genre,
                         creator: creator,
