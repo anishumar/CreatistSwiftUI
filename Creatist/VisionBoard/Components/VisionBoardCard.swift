@@ -1,12 +1,98 @@
 import SwiftUI
 import Foundation
 
+// MARK: - Cached AsyncImage Component
+struct CachedAsyncImage: View {
+    let url: URL?
+    let placeholder: Image
+    let content: (Image) -> AnyView
+    
+    @State private var cachedImage: UIImage?
+    @State private var isLoading = false
+    
+    init(url: URL?, @ViewBuilder content: @escaping (Image) -> AnyView) {
+        self.url = url
+        self.placeholder = Image(systemName: "person.crop.circle.fill")
+        self.content = content
+    }
+    
+    var body: some View {
+        Group {
+            if let cachedImage = cachedImage {
+                content(Image(uiImage: cachedImage))
+            } else if isLoading {
+                ProgressView()
+                    .frame(width: 50, height: 50)
+            } else {
+                placeholder
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
+        .onAppear {
+            loadImage()
+        }
+    }
+    
+    private func loadImage() {
+        guard let url = url else { return }
+        
+        // Check if image is already cached
+        if let cached = ImageCache.shared.getImage(for: url) {
+            self.cachedImage = cached
+            return
+        }
+        
+        isLoading = true
+        
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                if let image = UIImage(data: data) {
+                    await MainActor.run {
+                        self.cachedImage = image
+                        self.isLoading = false
+                        // Cache the image
+                        ImageCache.shared.setImage(image, for: url)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Simple Image Cache
+class ImageCache {
+    static let shared = ImageCache()
+    private let cache = NSCache<NSString, UIImage>()
+    
+    private init() {
+        cache.countLimit = 100 // Limit to 100 images
+    }
+    
+    func getImage(for url: URL) -> UIImage? {
+        return cache.object(forKey: url.absoluteString as NSString)
+    }
+    
+    func setImage(_ image: UIImage, for url: URL) {
+        cache.setObject(image, forKey: url.absoluteString as NSString)
+    }
+    
+    func clearCache() {
+        cache.removeAllObjects()
+    }
+}
+
 struct VisionBoardCard: View {
     let board: VisionBoard
     let index: Int // <-- Add this parameter
     @State private var assignedUsers: [User] = []
     @State private var isLoadingUsers = true
     @Environment(\.colorScheme) var colorScheme
+    @StateObject private var cacheManager = CacheManager.shared
     
     static let flatColors: [Color] = [
         Color(red: 0.32, green: 0.56, blue: 0.67), // Muted teal
@@ -27,18 +113,17 @@ struct VisionBoardCard: View {
                     ForEach(0..<min(assignedUsers.count, 4), id: \.self) { idx in
                         let user = assignedUsers[idx]
                         if let imageUrl = user.profileImageUrl, let url = URL(string: imageUrl) {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            } placeholder: {
-                                Image(systemName: "person.crop.circle.fill")
-                                    .foregroundColor(.white.opacity(0.7))
+                            CachedAsyncImage(url: url) { image in
+                                AnyView(
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.white)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                )
                             }
-                            .frame(width: 50, height: 50)
-                            .background(Color.white)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
                         } else {
                             Image(systemName: "person.crop.circle.fill")
                                 .resizable()
@@ -71,20 +156,24 @@ struct VisionBoardCard: View {
     }
     
     private func loadAssignedUsers() {
-        // Check in-memory cache first
-        if let cached = Creatist.shared.visionBoardUserCache[board.id] {
+        // Check cache manager first
+        if let cached = cacheManager.getVisionBoardUsers(board.id) {
+            print("✅ VisionBoardCard: Loading users from cache for board: \(board.name)")
             self.assignedUsers = cached
             self.isLoadingUsers = false
             return
         }
+        
+        print("🌐 VisionBoardCard: Fetching users from network for board: \(board.name)")
         Task {
             isLoadingUsers = true
             let users = await Creatist.shared.fetchVisionBoardUsers(visionBoardId: board.id)
             await MainActor.run {
+                print("✅ VisionBoardCard: Fetched \(users.count) users for board: \(board.name)")
                 self.assignedUsers = users
                 self.isLoadingUsers = false
-                // Save to cache
-                Creatist.shared.visionBoardUserCache[board.id] = users
+                // Save to cache manager
+                cacheManager.cacheVisionBoardUsers(users, for: board.id)
             }
         }
     }

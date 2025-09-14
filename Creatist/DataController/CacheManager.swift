@@ -10,6 +10,9 @@ class CacheManager: ObservableObject {
         static let trendingPosts = "trending_posts"
         static let followingPosts = "following_posts"
         static let users = "cached_users"
+        static let myVisionBoards = "my_vision_boards"
+        static let partnerVisionBoards = "partner_vision_boards"
+        static let visionBoardUsers = "vision_board_users"
         static let lastFetchTime = "last_fetch_time"
         static let cacheExpiration = "cache_expiration"
     }
@@ -23,6 +26,9 @@ class CacheManager: ObservableObject {
     @Published private var trendingPostsCache: [PostWithDetails] = []
     @Published private var followingPostsCache: [PostWithDetails] = []
     @Published private var userCache: [UUID: User] = [:]
+    @Published private var myVisionBoardsCache: [VisionBoard] = []
+    @Published private var partnerVisionBoardsCache: [VisionBoard] = []
+    @Published private var visionBoardUsersCache: [UUID: [User]] = [:]
     
     // MARK: - Cache Metadata
     private var lastFetchTimes: [String: Date] = [:]
@@ -112,6 +118,52 @@ class CacheManager: ObservableObject {
         saveCachedData()
     }
     
+    // MARK: - VisionBoard Caching
+    func getMyVisionBoards() -> [VisionBoard] {
+        if isCacheValid(for: CacheKeys.myVisionBoards) {
+            return myVisionBoardsCache
+        }
+        return []
+    }
+    
+    func getPartnerVisionBoards() -> [VisionBoard] {
+        if isCacheValid(for: CacheKeys.partnerVisionBoards) {
+            return partnerVisionBoardsCache
+        }
+        return []
+    }
+    
+    func cacheMyVisionBoards(_ boards: [VisionBoard]) {
+        myVisionBoardsCache = boards
+        updateCacheMetadata(for: CacheKeys.myVisionBoards)
+        saveCachedData()
+    }
+    
+    func cachePartnerVisionBoards(_ boards: [VisionBoard]) {
+        partnerVisionBoardsCache = boards
+        updateCacheMetadata(for: CacheKeys.partnerVisionBoards)
+        saveCachedData()
+    }
+    
+    func getVisionBoardUsers(_ boardId: UUID) -> [User]? {
+        return visionBoardUsersCache[boardId]
+    }
+    
+    func cacheVisionBoardUsers(_ users: [User], for boardId: UUID) {
+        visionBoardUsersCache[boardId] = users
+        saveCachedData()
+    }
+    
+    // MARK: - Image Cache Management
+    func clearImageCache() {
+        ImageCache.shared.clearCache()
+    }
+    
+    func getImageCacheStats() -> (count: Int, memoryUsage: String) {
+        // This is a simplified version - in a real app you'd want more detailed stats
+        return (count: 0, memoryUsage: "N/A")
+    }
+    
     // MARK: Cache Management
     func isCacheValid(for key: String) -> Bool {
         guard let expirationTime = cacheExpirationTimes[key] else { return false }
@@ -126,6 +178,12 @@ class CacheManager: ObservableObject {
             followingPostsCache.removeAll()
         case CacheKeys.users:
             userCache.removeAll()
+        case CacheKeys.myVisionBoards:
+            myVisionBoardsCache.removeAll()
+        case CacheKeys.partnerVisionBoards:
+            partnerVisionBoardsCache.removeAll()
+        case CacheKeys.visionBoardUsers:
+            visionBoardUsersCache.removeAll()
         default:
             break
         }
@@ -139,6 +197,9 @@ class CacheManager: ObservableObject {
         trendingPostsCache.removeAll()
         followingPostsCache.removeAll()
         userCache.removeAll()
+        myVisionBoardsCache.removeAll()
+        partnerVisionBoardsCache.removeAll()
+        visionBoardUsersCache.removeAll()
         lastFetchTimes.removeAll()
         cacheExpirationTimes.removeAll()
         saveCachedData()
@@ -161,6 +222,9 @@ class CacheManager: ObservableObject {
             trendingPostsCount: trendingPostsCache.count,
             followingPostsCount: followingPostsCache.count,
             usersCount: userCache.count,
+            myVisionBoardsCount: myVisionBoardsCache.count,
+            partnerVisionBoardsCount: partnerVisionBoardsCache.count,
+            visionBoardUsersCount: visionBoardUsersCache.values.flatMap { $0 }.count,
             lastTrendingFetch: lastFetchTimes[CacheKeys.trendingPosts],
             lastFollowingFetch: lastFetchTimes[CacheKeys.followingPosts]
         )
@@ -188,6 +252,18 @@ class CacheManager: ObservableObject {
                 
                 if let usersData = try? JSONEncoder().encode(userCache) {
                     UserDefaults.standard.set(usersData, forKey: CacheKeys.users)
+                }
+                
+                if let myBoardsData = try? JSONEncoder().encode(myVisionBoardsCache) {
+                    UserDefaults.standard.set(myBoardsData, forKey: CacheKeys.myVisionBoards)
+                }
+                
+                if let partnerBoardsData = try? JSONEncoder().encode(partnerVisionBoardsCache) {
+                    UserDefaults.standard.set(partnerBoardsData, forKey: CacheKeys.partnerVisionBoards)
+                }
+                
+                if let visionBoardUsersData = try? JSONEncoder().encode(visionBoardUsersCache) {
+                    UserDefaults.standard.set(visionBoardUsersData, forKey: CacheKeys.visionBoardUsers)
                 }
                 
                 if let metadataData = try? JSONEncoder().encode(lastFetchTimes) {
@@ -220,6 +296,22 @@ class CacheManager: ObservableObject {
             userCache = users
         }
         
+        // Load VisionBoard data
+        if let myBoardsData = UserDefaults.standard.data(forKey: CacheKeys.myVisionBoards),
+           let boards = try? JSONDecoder().decode([VisionBoard].self, from: myBoardsData) {
+            myVisionBoardsCache = boards
+        }
+        
+        if let partnerBoardsData = UserDefaults.standard.data(forKey: CacheKeys.partnerVisionBoards),
+           let boards = try? JSONDecoder().decode([VisionBoard].self, from: partnerBoardsData) {
+            partnerVisionBoardsCache = boards
+        }
+        
+        if let visionBoardUsersData = UserDefaults.standard.data(forKey: CacheKeys.visionBoardUsers),
+           let users = try? JSONDecoder().decode([UUID: [User]].self, from: visionBoardUsersData) {
+            visionBoardUsersCache = users
+        }
+        
         // Load metadata
         if let metadataData = UserDefaults.standard.data(forKey: CacheKeys.lastFetchTime),
            let metadata = try? JSONDecoder().decode([String: Date].self, from: metadataData) {
@@ -241,11 +333,14 @@ struct CacheStats {
     let trendingPostsCount: Int
     let followingPostsCount: Int
     let usersCount: Int
+    let myVisionBoardsCount: Int
+    let partnerVisionBoardsCount: Int
+    let visionBoardUsersCount: Int
     let lastTrendingFetch: Date?
     let lastFollowingFetch: Date?
     
     var totalCachedItems: Int {
-        return trendingPostsCount + followingPostsCount + usersCount
+        return trendingPostsCount + followingPostsCount + usersCount + myVisionBoardsCount + partnerVisionBoardsCount + visionBoardUsersCount
     }
     
     var isTrendingCacheValid: Bool {

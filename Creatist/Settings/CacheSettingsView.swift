@@ -27,6 +27,30 @@ struct CacheSettingsView: View {
                         isValid: true
                     )
                     
+                    CacheStatsRow(
+                        title: "My Vision Boards",
+                        count: cacheManager.getCacheStats().myVisionBoardsCount,
+                        isValid: true
+                    )
+                    
+                    CacheStatsRow(
+                        title: "Partner Vision Boards",
+                        count: cacheManager.getCacheStats().partnerVisionBoardsCount,
+                        isValid: true
+                    )
+                    
+                    CacheStatsRow(
+                        title: "Vision Board Users",
+                        count: cacheManager.getCacheStats().visionBoardUsersCount,
+                        isValid: true
+                    )
+                    
+                    CacheStatsRow(
+                        title: "Cached Images",
+                        count: cacheManager.getImageCacheStats().count,
+                        isValid: true
+                    )
+                    
                     HStack {
                         Text("Total Cached Items")
                             .font(.headline)
@@ -50,6 +74,13 @@ struct CacheSettingsView: View {
                     
                     Button("Clear User Cache") {
                         cacheManager.invalidateCache(for: "users")
+                    }
+                    .foregroundColor(.orange)
+                    
+                    Button("Clear VisionBoard Cache") {
+                        cacheManager.invalidateCache(for: "my_vision_boards")
+                        cacheManager.invalidateCache(for: "partner_vision_boards")
+                        cacheManager.invalidateCache(for: "vision_board_users")
                     }
                     .foregroundColor(.orange)
                     
