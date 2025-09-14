@@ -4,6 +4,7 @@ struct DiscoverView: View {
     @State private var searchText: String = ""
     @State private var searchResults: [User] = []
     @State private var isSearching: Bool = false
+    @StateObject private var viewModel = UserListViewModel()
     let genres = UserGenre.allCases
     let columns = [GridItem(.flexible()), GridItem(.flexible())]
     @State private var selectedGenre: UserGenre? = nil
@@ -43,7 +44,7 @@ struct DiscoverView: View {
                             .padding()
                         } else {
                             ForEach(searchResults, id: \.id) { user in
-                                NavigationLink(destination: UserProfileView(userId: user.id, viewModel: UserListViewModel())) {
+                                NavigationLink(destination: UserProfileView(userId: user.id, viewModel: viewModel)) {
                                     UserSearchResultRow(user: user)
                                 }
                                 .buttonStyle(PlainButtonStyle())

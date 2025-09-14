@@ -28,179 +28,24 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Frosted glassy accent color gradient background
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.accentColor.opacity(0.85), Color.clear]),
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .ignoresSafeArea()
-                .background(.ultraThinMaterial)
+                backgroundView
                 ScrollView {
                     VStack(spacing: 16) {
                         if let user = currentUser {
                             Spacer(minLength: 24)
-                            // Profile image
-                            ZStack {
-                                Circle()
-                                    .fill(Color(.systemBackground))
-                                    .frame(width: 110, height: 110)
-                                if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
-                                    AsyncImage(url: url) { phase in
-                                        if let image = phase.image {
-                                            image.resizable().aspectRatio(contentMode: .fill)
-                                        } else if phase.error != nil {
-                                            Image(systemName: "person.crop.circle.fill")
-                                                .resizable().aspectRatio(contentMode: .fill)
-                                                .foregroundColor(Color(.tertiaryLabel))
-                                        } else {
-                                            ProgressView()
-                                        }
-                                    }
-                                    .frame(width: 100, height: 100)
-                                    .clipShape(Circle())
-                                } else {
-                                    Image(systemName: "person.crop.circle.fill")
-                                        .resizable()
-                                        .frame(width: 100, height: 100)
-                                        .clipShape(Circle())
-                                        .foregroundColor(Color(.tertiaryLabel))
-                                }
-                            }
-                            .padding(.top, 16)
-                            // Username
-                            Text(user.name)
-                                .font(.title).bold()
-                                .foregroundColor(Color.primary)
+                            profileImageView(user: user)
+                            usernameView(user: user)
                                 .padding(.top, 12)
                             if let username = user.username {
                                 Text("@\(username)")
                                     .font(.subheadline)
                                     .foregroundColor(Color.secondary)
                             }
-                            // Stats
-                            HStack(spacing: 24) {
-                                StatView(number: Double(followersCount), label: "Followers")
-                                StatView(number: Double(followingCount), label: "Following")
-                                StatView(number: Double(myPosts.count), label: "Projects")
-                                StatView(number: user.rating ?? 0, label: "Rating", isDouble: true)
-                            }
-                            .padding(.top, 8)
-                            // Bio/description or email
-                            if let desc = user.description, !desc.isEmpty {
-                                Text(desc)
-                                    .font(.body)
-                                    .foregroundColor(Color.primary)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal)
-                                    .padding(.top, 8)
-                            } else {
-                                Text(user.email)
-                                    .font(.body)
-                                    .foregroundColor(Color.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal)
-                                    .padding(.top, 8)
-                            }
-                            // Info rows
-                            VStack(spacing: 8) {
-                                if let city = user.city, let country = user.country {
-                                    InfoRow(icon: "location", text: "\(city), \(country)")
-                                }
-                                if let workMode = user.workMode {
-                                    InfoRow(icon: "globe", text: workMode.rawValue)
-                                }
-                                if let paymentMode = user.paymentMode {
-                                    InfoRow(icon: paymentMode == .paid ? "creditcard.fill" : "gift.fill", text: paymentMode.rawValue.capitalized)
-                                }
-                                if let genres = user.genres, !genres.isEmpty {
-                                    InfoRow(icon: "music.note.list", text: genres.map { $0.rawValue }.joined(separator: ", "))
-                                }
-                            }
-                            .padding(.horizontal)
-                            .padding(.top, 8)
-                            // Segmented control
-                            Picker("Section", selection: $selectedSection) {
-                                ForEach(0..<sections.count, id: \.self) { idx in
-                                    Text(sections[idx])
-                                }
-                            }
-                            .pickerStyle(SegmentedPickerStyle())
-                            .padding(.horizontal, 16)
-                            .padding(.top, 24)
-                            // Section content
-                            if selectedSection == 0 {
-                                // My Projects
-                                if isLoadingMyPosts {
-                                    ProgressView().padding()
-                                } else if myPosts.isEmpty {
-                                    Text("No projects found.")
-                                        .foregroundColor(Color.secondary)
-                                        .padding()
-                                } else {
-                                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) { // was 16, now 8 for tighter look
-                                        ForEach(myPosts, id: \.id) { post in
-                                            Button(action: { selectedPost = post }) {
-                                                ZStack {
-                                                    if let urlString = post.media.first?.url, let url = URL(string: urlString) {
-                                                        AsyncImage(url: url) { phase in
-                                                            if let image = phase.image {
-                                                                image.resizable().aspectRatio(contentMode: .fill)
-                                                            } else if phase.error != nil {
-                                                                Color(.systemGray4)
-                                                            } else {
-                                                                ProgressView()
-                                                            }
-                                                        }
-                                                        .frame(height: 140)
-                                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                                    } else {
-                                                        Color(.systemGray4).frame(height: 140)
-                                                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                                                    }
-                                                }
-                                            }
-                                            .buttonStyle(PlainButtonStyle()) // Remove extra padding from post cells
-                                        }
-                                    }
-                                    .padding(.horizontal, 12) // Use consistent horizontal padding for the grid
-                                }
-                                // Navigation to detail
-                                NavigationLink(
-                                    destination: Group {
-                                        if let post = selectedPost {
-                                            ScrollView {
-                                                VStack(alignment: .leading, spacing: 24) {
-                                                    // Selected post detail at the top
-                                                    PostCellView(post: post, userCache: $userCache, fetchUser: fetchUser)
-                                                        .padding(.bottom, 16)
-                                                    // All other posts below, with the selected post first, then the rest
-                                                    let orderedPosts = [post] + myPosts.filter { $0.id != post.id }
-                                                    ForEach(orderedPosts, id: \.id) { detailPost in
-                                                        if detailPost.id != post.id {
-                                                            PostCellView(post: detailPost, userCache: $userCache, fetchUser: fetchUser)
-                                                                .padding(.vertical, 8)
-                                                        }
-                                                    }
-                                                }
-                                                .padding()
-                                            }
-                                        }
-                                    },
-                                    isActive: Binding(
-                                        get: { selectedPost != nil },
-                                        set: { if !$0 { selectedPost = nil } }
-                                    )
-                                ) { EmptyView() }.hidden()
-                            } else {
-                                // Top Works placeholder
-                                VStack {
-                                    Text("Top Works")
-                                        .foregroundColor(Color.secondary)
-                                        .padding()
-                                    // TODO: List top works here
-                                }
-                            }
+                            statsView(user: user)
+                            bioView(user: user)
+                            infoRowsView(user: user)
+                            segmentedControlView
+                            sectionContentView
                         } else {
                             Spacer()
                             ProgressView()
@@ -573,6 +418,15 @@ struct SettingsSheet: View {
                         }
                     }
                 }
+                Section(header: Text("App").foregroundColor(Color.secondary)) {
+                    NavigationLink(destination: CacheSettingsView()) {
+                        Label {
+                            Text("Cache Settings").foregroundColor(Color.primary)
+                        } icon: {
+                            Image(systemName: "externaldrive")
+                        }
+                    }
+                }
                 Section(header: Text("Support").foregroundColor(Color.secondary)) {
                     Button(action: { showAbout = true }) {
                         Label {
@@ -634,6 +488,207 @@ struct SettingsSheet: View {
             .sheet(isPresented: $showContact) {
                 ContactUsSheet(isPresented: $showContact)
             }
+        }
+    }
+}
+
+// MARK: - View Components
+extension ProfileView {
+    
+    private var backgroundView: some View {
+        LinearGradient(
+            gradient: Gradient(colors: [Color.accentColor.opacity(0.85), Color.clear]),
+            startPoint: .bottom,
+            endPoint: .top
+        )
+        .ignoresSafeArea()
+        .background(.ultraThinMaterial)
+    }
+    
+    private func profileImageView(user: User) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color(.systemBackground))
+                .frame(width: 110, height: 110)
+            if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else if phase.error != nil {
+                        Image(systemName: "person.crop.circle.fill")
+                            .resizable().aspectRatio(contentMode: .fill)
+                            .foregroundColor(Color(.tertiaryLabel))
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .frame(width: 100, height: 100)
+                .clipShape(Circle())
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .frame(width: 100, height: 100)
+                    .clipShape(Circle())
+                    .foregroundColor(Color(.tertiaryLabel))
+            }
+        }
+        .padding(.top, 16)
+    }
+    
+    private func usernameView(user: User) -> some View {
+        VStack(spacing: 4) {
+            Text(user.name)
+                .font(.title).bold()
+                .foregroundColor(Color.primary)
+            if let username = user.username {
+                Text("@\(username)")
+                    .font(.subheadline)
+                    .foregroundColor(Color.secondary)
+            }
+        }
+    }
+    
+    private func statsView(user: User) -> some View {
+        HStack(spacing: 24) {
+            StatView(number: Double(followersCount), label: "Followers")
+            StatView(number: Double(followingCount), label: "Following")
+            StatView(number: Double(myPosts.count), label: "Projects")
+            StatView(number: user.rating ?? 0, label: "Rating", isDouble: true)
+        }
+        .padding(.top, 8)
+    }
+    
+    private func bioView(user: User) -> some View {
+        Group {
+            if let desc = user.description, !desc.isEmpty {
+                Text(desc)
+                    .font(.body)
+                    .foregroundColor(Color.primary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+            } else {
+                Text(user.email)
+                    .font(.body)
+                    .foregroundColor(Color.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+            }
+        }
+    }
+    
+    private func infoRowsView(user: User) -> some View {
+        VStack(spacing: 8) {
+            if let city = user.city, let country = user.country {
+                InfoRow(icon: "location", text: "\(city), \(country)")
+            }
+            if let workMode = user.workMode {
+                InfoRow(icon: "globe", text: workMode.rawValue)
+            }
+            if let paymentMode = user.paymentMode {
+                InfoRow(icon: paymentMode == .paid ? "creditcard.fill" : "gift.fill", text: paymentMode.rawValue.capitalized)
+            }
+            if let genres = user.genres, !genres.isEmpty {
+                InfoRow(icon: "music.note.list", text: genres.map { $0.rawValue }.joined(separator: ", "))
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+    
+    private var segmentedControlView: some View {
+        Picker("Section", selection: $selectedSection) {
+            ForEach(0..<sections.count, id: \.self) { idx in
+                Text(sections[idx])
+            }
+        }
+        .pickerStyle(SegmentedPickerStyle())
+        .padding(.horizontal, 16)
+        .padding(.top, 24)
+    }
+    
+    private var sectionContentView: some View {
+        Group {
+            if selectedSection == 0 {
+                myProjectsView
+            } else {
+                topWorksView
+            }
+        }
+    }
+    
+    private var myProjectsView: some View {
+        Group {
+            if isLoadingMyPosts {
+                ProgressView().padding()
+            } else if myPosts.isEmpty {
+                Text("No projects found.")
+                    .foregroundColor(Color.secondary)
+                    .padding()
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(myPosts, id: \.id) { post in
+                        Button(action: { selectedPost = post }) {
+                            ZStack {
+                                if let urlString = post.media.first?.url, let url = URL(string: urlString) {
+                                    AsyncImage(url: url) { phase in
+                                        if let image = phase.image {
+                                            image.resizable().aspectRatio(contentMode: .fill)
+                                        } else if phase.error != nil {
+                                            Color(.systemGray4)
+                                        } else {
+                                            ProgressView()
+                                        }
+                                    }
+                                    .frame(height: 140)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                } else {
+                                    Color(.systemGray4).frame(height: 140)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+        }
+        .background(
+            NavigationLink(
+                destination: Group {
+                    if let post = selectedPost {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 24) {
+                                PostCellView(post: post)
+                                    .padding(.bottom, 16)
+                                let orderedPosts = [post] + myPosts.filter { $0.id != post.id }
+                                ForEach(orderedPosts, id: \.id) { detailPost in
+                                    if detailPost.id != post.id {
+                                        PostCellView(post: detailPost)
+                                            .padding(.vertical, 8)
+                                    }
+                                }
+                            }
+                            .padding()
+                        }
+                    }
+                },
+                isActive: Binding(
+                    get: { selectedPost != nil },
+                    set: { if !$0 { selectedPost = nil } }
+                )
+            ) { EmptyView() }.hidden()
+        )
+    }
+    
+    private var topWorksView: some View {
+        VStack {
+            Text("Top Works")
+                .foregroundColor(Color.secondary)
+                .padding()
+            // TODO: List top works here
         }
     }
 } 

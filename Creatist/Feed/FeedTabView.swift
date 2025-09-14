@@ -9,9 +9,9 @@ struct FeedView: View {
     @State private var isLoadingMore = false
     @State private var nextCursor: String? = nil
     @State private var errorMessage: String? = nil
-    @State private var userCache: [UUID: User] = [:]
     @State private var selectedPost: PostWithDetails? = nil
     @State private var showChatList = false
+    @StateObject private var cacheManager = CacheManager.shared
     let segments = ["Trending", "Following"]
     let pageSize = 20
 
@@ -60,13 +60,13 @@ struct FeedView: View {
                                         ScrollView {
                                             VStack(alignment: .leading, spacing: 24) {
                                                 // Selected post detail at the top
-                                                PostCellView(post: post, userCache: $userCache, fetchUser: fetchUser)
+                                                PostCellView(post: post)
                                                     .padding(.bottom, 16)
                                                 // All trending posts below, with the selected post first, then the rest
                                                 let orderedPosts = [post] + posts.filter { $0.id != post.id }
                                                 ForEach(orderedPosts, id: \.id) { trendingPost in
                                                     if trendingPost.id != post.id {
-                                                        PostCellView(post: trendingPost, userCache: $userCache, fetchUser: fetchUser)
+                                                        PostCellView(post: trendingPost)
                                                             .padding(.vertical, 8)
                                                     }
                                                 }
@@ -87,11 +87,7 @@ struct FeedView: View {
                         VStack(spacing: 0) {
                             List {
                                 ForEach(posts, id: \.id) { post in
-                                    PostCellView(
-                                        post: post,
-                                        userCache: $userCache,
-                                        fetchUser: fetchUser
-                                    )
+                                    PostCellView(post: post)
                                     .onAppear {
                                         checkIfShouldLoadMore(post: post)
                                     }
@@ -128,23 +124,36 @@ struct FeedView: View {
         isLoadingMore = false
         errorMessage = nil
         nextCursor = nil
-        posts = []
-        await loadPosts(reset: true)
-        isLoading = false
+        
+        // Try to load from cache first
+        let feedType: FeedType = selectedSegment == 0 ? .trending : .following
+        if cacheManager.isCacheValid(for: feedType) {
+            posts = cacheManager.getCachedPosts(for: feedType)
+            isLoading = false
+        } else {
+            posts = []
+            await loadPosts(reset: true)
+            isLoading = false
+        }
     }
 
     func loadPosts(reset: Bool = false) async {
         do {
             let result: PaginatedPosts
+            let feedType: FeedType = selectedSegment == 0 ? .trending : .following
+            
             if selectedSegment == 0 {
                 result = await Creatist.shared.fetchTrendingPosts(limit: pageSize, cursor: reset ? nil : nextCursor)
             } else {
                 result = await Creatist.shared.fetchFollowingFeed(limit: pageSize, cursor: reset ? nil : nextCursor)
             }
+            
             if reset {
                 posts = result.posts
+                cacheManager.cachePosts(result.posts, for: feedType, append: false)
             } else {
                 posts.append(contentsOf: result.posts)
+                cacheManager.cachePosts(result.posts, for: feedType, append: true)
             }
             nextCursor = result.nextCursor
         } catch {
@@ -167,28 +176,11 @@ struct FeedView: View {
         }
     }
 
-    func fetchUser(userId: UUID, completion: @escaping (User?) -> Void) {
-        if let cached = userCache[userId] {
-            completion(cached)
-            return
-        }
-        Task {
-            if let user = await Creatist.shared.fetchUserById(userId: userId) {
-                await MainActor.run {
-                    userCache[userId] = user
-                    completion(user)
-                }
-            } else {
-                completion(nil)
-            }
-        }
-    }
 }
 
 struct PostCellView: View {
     let post: PostWithDetails
-    @Binding var userCache: [UUID: User]
-    var fetchUser: (UUID, @escaping (User?) -> Void) -> Void
+    @StateObject private var cacheManager = CacheManager.shared
     @State private var author: User? = nil
     @State private var collaborators: [User] = []
     @State private var isLiked: Bool = false
@@ -207,7 +199,7 @@ struct PostCellView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: -6) {
                         ForEach(post.collaborators, id: \.userId) { collaborator in
-                            if let user = userCache[collaborator.userId] {
+                            if let user = cacheManager.getUser(collaborator.userId) {
                                 if let url = user.profileImageUrl, let imgUrl = URL(string: url) {
                                     AsyncImage(url: imgUrl) { phase in
                                         if let image = phase.image {
@@ -226,12 +218,12 @@ struct PostCellView: View {
                                 }
                             } else {
                                 Color.gray.frame(width: 36, height: 36).clipShape(Circle())
-                                    .onAppear { fetchUser(collaborator.userId) { _ in } }
+                                    .onAppear { fetchUser(collaborator.userId) }
                             }
                         }
                     }
                     // Names together
-                    let names = post.collaborators.compactMap { userCache[$0.userId]?.name }.joined(separator: ", ")
+                    let names = post.collaborators.compactMap { cacheManager.getUser($0.userId)?.name }.joined(separator: ", ")
                     if !names.isEmpty {
                         Text(names)
                             .font(.subheadline).bold()
@@ -249,7 +241,7 @@ struct PostCellView: View {
                         UserImageAndName(user: user)
                     } else {
                         Color.gray.frame(width: 36, height: 36).clipShape(Circle())
-                            .onAppear { fetchUser(post.userId) { _ in } }
+                            .onAppear { fetchUser(post.userId) }
                     }
                 }
             }
@@ -338,19 +330,29 @@ struct PostCellView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.systemBackground))
         .onAppear {
-            if author == nil {
-                fetchUser(post.userId) { user in
-                    self.author = user
-                }
+            // Try to get author from cache first
+            if let cachedAuthor = cacheManager.getUser(post.userId) {
+                author = cachedAuthor
+            } else if author == nil {
+                fetchUser(post.userId)
             }
-            if post.isCollaborative && collaborators.isEmpty {
-                let ids = post.collaborators.map { $0.userId }
-                for id in ids {
-                    fetchUser(id) { user in
-                        if let user = user, !collaborators.contains(where: { $0.id == user.id }) {
-                            collaborators.append(user)
-                        }
-                    }
+            
+            // Try to get collaborators from cache first
+            if post.isCollaborative && !post.collaborators.isEmpty {
+                let cachedCollaborators = post.collaborators.compactMap { collaborator in
+                    cacheManager.getUser(collaborator.userId)
+                }
+                if !cachedCollaborators.isEmpty {
+                    collaborators = cachedCollaborators
+                }
+                
+                // Fetch any missing collaborators
+                let missingIds = post.collaborators.filter { collaborator in
+                    !collaborators.contains { $0.id == collaborator.userId }
+                }.map { $0.userId }
+                
+                for id in missingIds {
+                    fetchUser(id)
                 }
             }
             // Initialize like state
@@ -406,6 +408,47 @@ struct PostCellView: View {
                 ShareSheet(activityItems: [url])
             } else {
                 ShareSheet(activityItems: ["Check out this post on Creatist!"])
+            }
+        }
+    }
+    
+    func fetchUser(_ userId: UUID) {
+        print("🔍 Fetching user: \(userId)")
+        
+        // Check cache first
+        if let cachedUser = cacheManager.getUser(userId) {
+            print("✅ Found user in cache: \(cachedUser.name)")
+            if post.userId == userId {
+                author = cachedUser
+                print("✅ Set author: \(cachedUser.name)")
+            } else if post.isCollaborative && post.collaborators.contains(where: { $0.userId == userId }) {
+                if !collaborators.contains(where: { $0.id == userId }) {
+                    collaborators.append(cachedUser)
+                    print("✅ Added collaborator: \(cachedUser.name)")
+                }
+            }
+            return
+        }
+        
+        print("🌐 User not in cache, fetching from network...")
+        // Fetch from network if not in cache
+        Task {
+            if let user = await Creatist.shared.fetchUserById(userId: userId) {
+                print("✅ Fetched user from network: \(user.name), profileImageUrl: \(user.profileImageUrl ?? "nil")")
+                await MainActor.run {
+                    cacheManager.cacheUser(user)
+                    if post.userId == userId {
+                        author = user
+                        print("✅ Set author from network: \(user.name)")
+                    } else if post.isCollaborative && post.collaborators.contains(where: { $0.userId == userId }) {
+                        if !collaborators.contains(where: { $0.id == userId }) {
+                            collaborators.append(user)
+                            print("✅ Added collaborator from network: \(user.name)")
+                        }
+                    }
+                }
+            } else {
+                print("❌ Failed to fetch user: \(userId)")
             }
         }
     }
