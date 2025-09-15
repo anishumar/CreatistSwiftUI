@@ -1200,7 +1200,20 @@ extension Creatist {
 
     // Fetch all posts for a user
     func fetchUserPosts(userId: UUID) async -> [PostWithDetails] {
+        // Check cache first
+        if CacheManager.shared.isUserPostsCacheValid(for: userId),
+           let cachedPosts = CacheManager.shared.getCachedUserPosts(for: userId) {
+            return cachedPosts
+        }
+        
+        // Fetch from API if cache is invalid or empty
         let url = "/posts/user/\(userId.uuidString)"
-        return await NetworkManager.shared.get(url: url) ?? []
+        if let posts: [PostWithDetails] = await NetworkManager.shared.get(url: url) {
+            // Cache the fetched posts
+            CacheManager.shared.cacheUserPosts(posts, for: userId)
+            return posts
+        }
+        
+        return []
     }
 }

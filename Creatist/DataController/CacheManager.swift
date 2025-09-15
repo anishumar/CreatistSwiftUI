@@ -10,6 +10,7 @@ class CacheManager: ObservableObject {
         static let trendingPosts = "trending_posts"
         static let followingPosts = "following_posts"
         static let users = "cached_users"
+        static let userPosts = "user_posts"
         static let myVisionBoards = "my_vision_boards"
         static let partnerVisionBoards = "partner_vision_boards"
         static let visionBoardUsers = "vision_board_users"
@@ -27,6 +28,7 @@ class CacheManager: ObservableObject {
     @Published private var trendingPostsCache: [PostWithDetails] = []
     @Published private var followingPostsCache: [PostWithDetails] = []
     @Published private var userCache: [UUID: User] = [:]
+    @Published private var userPostsCache: [UUID: [PostWithDetails]] = [:] // userId: posts
     @Published private var myVisionBoardsCache: [VisionBoard] = []
     @Published private var partnerVisionBoardsCache: [VisionBoard] = []
     @Published private var visionBoardUsersCache: [UUID: [User]] = [:]
@@ -140,6 +142,30 @@ class CacheManager: ObservableObject {
         saveCachedData()
     }
     
+    // MARK: - User Posts Caching
+    func cacheUserPosts(_ posts: [PostWithDetails], for userId: UUID) {
+        userPostsCache[userId] = posts
+        updateCacheMetadata(for: "\(CacheKeys.userPosts)_\(userId.uuidString)")
+        saveCachedData()
+    }
+    
+    func getCachedUserPosts(for userId: UUID) -> [PostWithDetails]? {
+        return userPostsCache[userId]
+    }
+    
+    func isUserPostsCacheValid(for userId: UUID) -> Bool {
+        let key = "\(CacheKeys.userPosts)_\(userId.uuidString)"
+        return isCacheValid(for: key)
+    }
+    
+    func invalidateUserPostsCache(for userId: UUID) {
+        userPostsCache.removeValue(forKey: userId)
+        let key = "\(CacheKeys.userPosts)_\(userId.uuidString)"
+        lastFetchTimes.removeValue(forKey: key)
+        cacheExpirationTimes.removeValue(forKey: key)
+        saveCachedData()
+    }
+    
     // MARK: - VisionBoard Caching
     func getMyVisionBoards() -> [VisionBoard] {
         if isCacheValid(for: CacheKeys.myVisionBoards) {
@@ -219,6 +245,7 @@ class CacheManager: ObservableObject {
         trendingPostsCache.removeAll()
         followingPostsCache.removeAll()
         userCache.removeAll()
+        userPostsCache.removeAll()
         myVisionBoardsCache.removeAll()
         partnerVisionBoardsCache.removeAll()
         visionBoardUsersCache.removeAll()

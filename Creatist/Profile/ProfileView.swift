@@ -148,7 +148,19 @@ struct ProfileView: View {
     }
 
     func loadMyPosts(for userId: UUID) async {
-        isLoadingMyPosts = true
+        // Check cache first and show immediately if available
+        if let cachedPosts = CacheManager.shared.getCachedUserPosts(for: userId) {
+            await MainActor.run {
+                myPosts = cachedPosts
+            }
+        }
+        
+        // Set loading state
+        await MainActor.run {
+            isLoadingMyPosts = true
+        }
+        
+        // Fetch fresh data
         let posts = await Creatist.shared.fetchUserPosts(userId: userId)
         await MainActor.run {
             myPosts = posts
@@ -344,6 +356,10 @@ struct CreateSelfPostSheet: View {
                             if let postId = postId {
                                 isPosting = false
                                 print("[DEBUG] [Post] Post created successfully. Post ID: \(postId)")
+                                // Invalidate user posts cache to refresh the profile
+                                if let currentUser = Creatist.shared.user {
+                                    CacheManager.shared.invalidateUserPostsCache(for: currentUser.id)
+                                }
                                 onPost()
                                 dismiss()
                             } else {

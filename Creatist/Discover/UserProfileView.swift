@@ -100,7 +100,19 @@ struct UserProfileView: View {
     }
 
     func loadUserPosts(for userId: UUID) async {
-        isLoadingPosts = true
+        // Check cache first and show immediately if available
+        if let cachedPosts = CacheManager.shared.getCachedUserPosts(for: userId) {
+            await MainActor.run {
+                userPosts = cachedPosts
+            }
+        }
+        
+        // Set loading state
+        await MainActor.run {
+            isLoadingPosts = true
+        }
+        
+        // Fetch fresh data
         let posts = await Creatist.shared.fetchUserPosts(userId: userId)
         await MainActor.run {
             userPosts = posts
