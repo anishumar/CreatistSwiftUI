@@ -500,36 +500,20 @@ struct ShareSheet: UIViewControllerRepresentable {
 // Add ChatListView at the end of the file
 struct ChatListView: View {
     @State private var searchText: String = ""
-    @State private var isSearching: Bool = false
     @State private var showNewChat = false
-    // Remove dummy chats, use an empty array for now
-    let chats: [(id: UUID, name: String, lastMessage: String, unread: Int)] = []
+    // Add dummy data to make search bar visible
+    let chats: [(id: UUID, name: String, lastMessage: String, unread: Int)] = [
+        (UUID(), "John Doe", "Hey, how are you?", 2),
+        (UUID(), "Jane Smith", "Thanks for the help!", 0),
+        (UUID(), "Mike Johnson", "See you tomorrow", 1)
+    ]
     var filteredChats: [(id: UUID, name: String, lastMessage: String, unread: Int)] {
         if searchText.isEmpty { return chats }
         return chats.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.lastMessage.localizedCaseInsensitiveContains(searchText) }
     }
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Chats")
-                    .font(.largeTitle).bold()
-                Spacer()
-                Button(action: { showNewChat = true }) {
-                    Image(systemName: "plus")
-                        .font(.title2)
-                        .padding(8)
-                        .background(Circle().fill(Color.accentColor))
-                        .foregroundColor(.white)
-                }
-            }
-            .padding([.top, .horizontal])
-            // Native search bar
-            SearchBar(text: $searchText, isEditing: $isSearching)
-                .padding(.horizontal)
-                .padding(.bottom, 4)
-            Divider()
+        NavigationStack {
             if filteredChats.isEmpty {
-                Spacer()
                 VStack(spacing: 16) {
                     Image(systemName: "bubble.left.and.bubble.right")
                         .resizable()
@@ -544,7 +528,7 @@ struct ChatListView: View {
                         .foregroundColor(.secondary)
                 }
                 .padding()
-                Spacer()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     ForEach(filteredChats, id: \ .id) { chat in
@@ -567,6 +551,16 @@ struct ChatListView: View {
                     }
                 }
                 .listStyle(PlainListStyle())
+                .searchable(text: $searchText, prompt: "Search chats")
+            }
+        }
+        .navigationTitle("Chats")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: { showNewChat = true }) {
+                    Image(systemName: "plus")
+                }
             }
         }
         .sheet(isPresented: $showNewChat) {
@@ -585,47 +579,3 @@ struct ChatListView: View {
         }
     }
 }
-
-// UIKit native search bar wrapper
-import UIKit
-struct SearchBar: UIViewRepresentable {
-    @Binding var text: String
-    @Binding var isEditing: Bool
-    class Coordinator: NSObject, UISearchBarDelegate {
-        @Binding var text: String
-        @Binding var isEditing: Bool
-        init(text: Binding<String>, isEditing: Binding<Bool>) {
-            _text = text
-            _isEditing = isEditing
-        }
-        func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-            text = searchText
-        }
-        func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
-            isEditing = true
-        }
-        func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
-            isEditing = false
-        }
-        func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
-            searchBar.resignFirstResponder()
-            isEditing = false
-            text = ""
-        }
-    }
-    func makeCoordinator() -> Coordinator {
-        return Coordinator(text: $text, isEditing: $isEditing)
-    }
-    func makeUIView(context: Context) -> UISearchBar {
-        let searchBar = UISearchBar(frame: .zero)
-        searchBar.delegate = context.coordinator
-        searchBar.placeholder = "Search"
-        searchBar.showsCancelButton = true
-        searchBar.autocapitalizationType = .none
-        return searchBar
-    }
-    func updateUIView(_ uiView: UISearchBar, context: Context) {
-        uiView.text = text
-        uiView.showsCancelButton = isEditing
-    }
-} 
