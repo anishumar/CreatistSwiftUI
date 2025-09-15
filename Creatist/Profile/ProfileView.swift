@@ -48,7 +48,7 @@ struct ProfileView: View {
                             sectionContentView
                         } else {
                             Spacer()
-                            ProgressView()
+                            SkeletonView(width: 20, height: 20, cornerRadius: 10)
                             Spacer()
                         }
                         if let updateMessage = updateMessage {
@@ -245,7 +245,10 @@ struct CreateSelfPostSheet: View {
                     Text(postError).foregroundColor(.red).font(.caption)
                 }
                 if isPosting {
-                    HStack { Spacer(); ProgressView(); Spacer() }
+                    HStack { Spacer(); 
+                        SkeletonView(width: 20, height: 20, cornerRadius: 10)
+                        Spacer() 
+                    }
                 }
                 Spacer()
             }
@@ -418,15 +421,6 @@ struct SettingsSheet: View {
                         }
                     }
                 }
-                Section(header: Text("App").foregroundColor(Color.secondary)) {
-                    NavigationLink(destination: CacheSettingsView()) {
-                        Label {
-                            Text("Cache Settings").foregroundColor(Color.primary)
-                        } icon: {
-                            Image(systemName: "externaldrive")
-                        }
-                    }
-                }
                 Section(header: Text("Support").foregroundColor(Color.secondary)) {
                     Button(action: { showAbout = true }) {
                         Label {
@@ -519,7 +513,7 @@ extension ProfileView {
                             .resizable().aspectRatio(contentMode: .fill)
                             .foregroundColor(Color(.tertiaryLabel))
                     } else {
-                        ProgressView()
+                        SkeletonView(width: 100, height: 100, cornerRadius: 50)
                     }
                 }
                 .frame(width: 100, height: 100)
@@ -621,7 +615,7 @@ extension ProfileView {
     private var myProjectsView: some View {
         Group {
             if isLoadingMyPosts {
-                ProgressView().padding()
+                UserProfileProjectsSkeleton()
             } else if myPosts.isEmpty {
                 Text("No projects found.")
                     .foregroundColor(Color.secondary)
@@ -638,7 +632,7 @@ extension ProfileView {
                                         } else if phase.error != nil {
                                             Color(.systemGray4)
                                         } else {
-                                            ProgressView()
+                                            SkeletonView(cornerRadius: 12)
                                         }
                                     }
                                     .frame(height: 140)

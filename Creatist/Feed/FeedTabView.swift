@@ -35,7 +35,12 @@ struct FeedView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 4)
                 if isLoading && posts.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if selectedSegment == 0 {
+                        TrendingCollectionSkeletonView()
+                            .padding(.horizontal, 12)
+                    } else {
+                        FeedLoadingView(isTrending: false)
+                    }
                 } else if let errorMessage = errorMessage {
                     Text(errorMessage).foregroundColor(.red)
                 } else {
@@ -93,7 +98,10 @@ struct FeedView: View {
                                     }
                                 }
                                 if isLoadingMore {
-                                    HStack { Spacer(); ProgressView(); Spacer() }
+                                    HStack { Spacer(); 
+                                        SkeletonView(width: 20, height: 20, cornerRadius: 10)
+                                        Spacer() 
+                                    }
                                 }
                             }
                             .listStyle(PlainListStyle())

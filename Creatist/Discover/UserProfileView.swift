@@ -191,7 +191,7 @@ extension UserProfileView {
                             .resizable().aspectRatio(contentMode: .fill)
                             .foregroundColor(Color(.tertiaryLabel))
                     } else {
-                        ProgressView()
+                        SkeletonView(width: 100, height: 100, cornerRadius: 50)
                     }
                 }
                 .frame(width: 100, height: 100)
@@ -326,7 +326,7 @@ extension UserProfileView {
     private var projectsView: some View {
         Group {
             if isLoadingPosts {
-                ProgressView().padding()
+                UserProfileProjectsSkeleton()
             } else if userPosts.isEmpty {
                 Text("No projects found.")
                     .foregroundColor(Color.secondary)
@@ -343,7 +343,7 @@ extension UserProfileView {
                                         } else if phase.error != nil {
                                             Color(.systemGray4)
                                         } else {
-                                            ProgressView()
+                                            SkeletonView(cornerRadius: 12)
                                         }
                                     }
                                     .frame(height: 140)
