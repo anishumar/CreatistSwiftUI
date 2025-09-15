@@ -40,21 +40,18 @@ class TokenMonitor: ObservableObject {
         stopMonitoring()
         
         guard let expirationTime = getTokenExpirationTime() else {
-            print("🔍 TokenMonitor: No token expiration time found")
             return
         }
         
         let timeUntilRefresh = expirationTime.timeIntervalSinceNow - refreshBuffer
         
         if timeUntilRefresh > 0 {
-            print("🔍 TokenMonitor: Scheduling refresh in \(timeUntilRefresh) seconds")
             refreshTimer = Timer.scheduledTimer(withTimeInterval: timeUntilRefresh, repeats: false) { [weak self] _ in
                 Task {
                     await self?.refreshTokenIfNeeded()
                 }
             }
         } else {
-            print("🔍 TokenMonitor: Token expires soon, refreshing immediately")
             Task {
                 await refreshTokenIfNeeded()
             }
@@ -72,15 +69,11 @@ class TokenMonitor: ObservableObject {
         let timeUntilExpiry = expirationTime.timeIntervalSinceNow
         
         if timeUntilExpiry <= refreshBuffer {
-            print("🔍 TokenMonitor: Token expires in \(timeUntilExpiry) seconds, refreshing...")
             let success = await NetworkManager.shared.refreshToken()
             if success {
-                print("🔍 TokenMonitor: Token refreshed successfully, restarting monitor")
                 await MainActor.run {
                     startMonitoring()
                 }
-            } else {
-                print("🔍 TokenMonitor: Token refresh failed")
             }
         }
     }
@@ -189,10 +182,8 @@ actor NetworkManager {
         if !urlString.contains("/auth/otp") && !urlString.contains("/auth/signup") && !urlString.contains("/auth/signin") {
             // Proactively refresh token if it's expired or expiring soon
             if await isTokenExpiredOrExpiringSoon() {
-                print("🔍 NetworkManager: Token expired or expiring soon, refreshing before request")
                 let refreshed = await refreshToken()
                 if !refreshed {
-                    print("🔍 NetworkManager: Failed to refresh token before request")
                     return nil
                 }
             }
@@ -211,8 +202,7 @@ actor NetworkManager {
             }
 
             if httpResponse.statusCode != 200 {
-                print("   Status: \(httpResponse.statusCode)")
-                print("   Data: \(String(data: data, encoding: .utf8) ?? "nil")")
+                // HTTP error - status code not 200
             }
 
             if httpResponse.statusCode == 401 && retryOn401 {
@@ -270,7 +260,12 @@ actor NetworkManager {
                 throw DecodingError.dataCorruptedError(in: container, debugDescription: "Date string does not match expected format: \(dateString)")
             }
 
-            return try decoder.decode(T.self, from: data)
+            do {
+                let result = try decoder.decode(T.self, from: data)
+                return result
+            } catch {
+                return nil
+            }
 
         } catch {
             logger.error("Request error for URL: \(urlString, privacy: .public), error: \(String(describing: error), privacy: .public)")

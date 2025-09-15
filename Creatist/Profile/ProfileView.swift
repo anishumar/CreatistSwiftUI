@@ -115,6 +115,10 @@ struct ProfileView: View {
         KeychainHelper.remove("refreshToken")
         KeychainHelper.remove("tokenExpirationTime")
         TokenMonitor.shared.stopMonitoring()
+        
+        // Clear all caches when user logs out
+        CacheManager.shared.onUserLogout()
+        
         isLoggedIn = false
     }
     

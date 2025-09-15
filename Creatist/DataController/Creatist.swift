@@ -85,6 +85,8 @@ class Creatist {
         let user: User? = await NetworkManager.shared.get(url: "/auth/fetch")
         if let user {
             self.user = user
+            // Check for user change and clear caches if needed
+            await CacheManager.shared.onUserLogin()
         }
     }
     
@@ -133,8 +135,6 @@ class Creatist {
     }
     
     func searchUsers(query: String) async -> [User] {
-        print("🔍 Searching users for query: '\(query)'")
-        
         // Fetch users from all genres and filter locally
         var allUsers: [User] = []
         
@@ -155,7 +155,6 @@ class Creatist {
             (user.username?.localizedCaseInsensitiveContains(query) ?? false)
         }
         
-        print("🔍 Found \(filteredUsers.count) users matching '\(query)' out of \(uniqueUsers.count) total users")
         return filteredUsers
     }
     
@@ -184,11 +183,24 @@ class Creatist {
     
     func followUser(userId: String) async -> Bool {
         let response: Response? = await NetworkManager.shared.put(url: "/v1/follow/\(userId)", body: nil)
-        return response?.message == "success"
+        let success = response?.message == "success"
+        
+        // Invalidate following feed cache since following list changed
+        if success {
+            CacheManager.shared.invalidateCache(for: .following)
+        }
+        
+        return success
     }
     
     func unfollowUser(userId: String) async -> Bool {
         let success = await NetworkManager.shared.delete(url: "/v1/unfollow/\(userId)", body: nil)
+        
+        // Invalidate following feed cache since following list changed
+        if success {
+            CacheManager.shared.invalidateCache(for: .following)
+        }
+        
         return success
     }
     
@@ -274,9 +286,7 @@ class Creatist {
             print("   Assignments Count: \(assignments.count)")
             
             // Step 1: Create the vision board
-            print("📤 Step 1: Creating vision board...")
             guard let currentUser = self.user else {
-                print("❌ No current user found for vision board creation")
                 return false
             }
             let visionBoardData: [String: Any] = [
@@ -294,18 +304,13 @@ class Creatist {
                 url: "/v1/visionboard/create",
                 body: requestData
             ) else {
-                print("❌ Failed to create vision board")
                 return false
             }
             let visionBoardId = visionBoardResponse.visionboard.id
-            print("✅ Step 1: Vision board created with ID: \(visionBoardId)")
-            print("   Response: \(String(data: try JSONEncoder().encode(visionBoardResponse), encoding: .utf8) ?? "nil")")
             
             // Step 2: Create genres for the vision board
-            print("📤 Step 2: Creating genres...")
             var createdGenres: [Genre] = []
             for (index, genreCreate) in genres.enumerated() {
-                print("   Creating genre \(index + 1)/\(genres.count): \(genreCreate.name)")
                 let genreData: [String: Any] = [
                     "name": genreCreate.name,
                     "description": genreCreate.description ?? "",
@@ -319,24 +324,19 @@ class Creatist {
                     url: "/v1/visionboard/\(visionBoardId)/genres",
                     body: genreRequestData
                 ) else {
-                    print("❌ Failed to create genre: \(genreCreate.name)")
                     return false
                 }
                 createdGenres.append(genreResponse.genre)
-                print("✅ Created genre: \(genreResponse.genre.name) with ID: \(genreResponse.genre.id)")
             }
             
             // Step 3: Create assignments for each genre
-            print("📤 Step 3: Creating assignments...")
             for (index, assignment) in assignments.enumerated() {
                 // Find the corresponding genre for this assignment
                 guard let genreIndex = createdGenres.firstIndex(where: { $0.name == assignment.genreName }) else {
-                    print("❌ No corresponding genre found for assignment \(index + 1) with genre: \(assignment.genreName)")
                     return false
                 }
                 
                 let genreId = createdGenres[genreIndex].id
-                print("   Creating assignment \(index + 1)/\(assignments.count) for user: \(assignment.userId) in genre: \(assignment.genreName) (ID: \(genreId))")
                 let assignmentData: [String: Any] = [
                     "genre_id": genreId.uuidString,
                     "user_id": assignment.userId.uuidString,
@@ -352,17 +352,13 @@ class Creatist {
                     url: "/v1/visionboard/assignments",
                     body: assignmentRequestData
                 ) else {
-                    print("❌ Failed to create assignment for user: \(assignment.userId)")
                     return false
                 }
-                print("✅ Created assignment: \(assignmentResponse.assignment.id)")
             }
             
-            print("🎉 Vision board creation completed successfully!")
             return true
             
         } catch {
-            print("❌ Error creating vision board: \(error)")
             return false
         }
     }
@@ -419,50 +415,36 @@ class Creatist {
     // Fetch all vision boards for the current user
     func fetchMyVisionBoards() async -> [VisionBoard] {
         guard let user = self.user else { 
-            print("❌ No current user found for fetching vision boards")
             return [] 
         }
-        print("🔍 Fetching vision boards created by user: \(user.id)")
         let url = "/v1/visionboard?created_by=\(user.id.uuidString)"
-        print("🌐 NetworkManager: GET \(url)")
         
         if let response: VisionBoardsResponse = await NetworkManager.shared.get(url: url) {
-            print("✅ Fetched \(response.visionboards.count) vision boards created by user")
             return response.visionboards
         }
-        print("❌ Failed to fetch vision boards created by user")
         return []
     }
 
     // Fetch all vision boards where the user is a partner (not creator)
     func fetchPartnerVisionBoards() async -> [VisionBoard] {
         guard let user = self.user else { 
-            print("❌ No current user found for fetching partner vision boards")
             return [] 
         }
-        print("🔍 Fetching vision boards where user is partner: \(user.id)")
         let url = "/v1/visionboard?partner_id=\(user.id.uuidString)"
-        print("🌐 NetworkManager: GET \(url)")
         
         if let response: VisionBoardsResponse = await NetworkManager.shared.get(url: url) {
-            print("✅ Fetched \(response.visionboards.count) partner vision boards")
             return response.visionboards
         }
-        print("❌ Failed to fetch partner vision boards")
         return []
     }
 
     // Fetch all users assigned to a specific vision board
     func fetchVisionBoardUsers(visionBoardId: UUID) async -> [User] {
-        print("🔍 Fetching users for vision board: \(visionBoardId)")
         let url = "/v1/visionboard/\(visionBoardId.uuidString.lowercased())/users"
-        print("🌐 NetworkManager: GET \(url)")
         
         if let response: VisionBoardUsersResponse = await NetworkManager.shared.get(url: url) {
-            print("✅ Fetched \(response.users.count) users for vision board")
             return response.users
         }
-        print("❌ Failed to fetch users for vision board")
         return []
     }
 
@@ -598,25 +580,20 @@ class NotificationViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     func fetchNotifications() async {
-        print("[DEBUG] fetchNotifications called")
         let accessToken = KeychainHelper.get("accessToken")
-        print("[DEBUG] Access token: \(accessToken ?? "nil")")
         guard let token = accessToken, !token.isEmpty else {
-            print("[DEBUG] No access token found. User is not logged in.")
             await MainActor.run { self.errorMessage = "Not logged in. Please sign in again." }
             return
         }
         await MainActor.run { self.isLoading = true }
         defer { Task { await MainActor.run { self.isLoading = false } } }
-        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications") else { print("[DEBUG] Invalid URL"); return }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] Notifications API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("[DEBUG] HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
                 await MainActor.run { self.errorMessage = "Failed to fetch notifications." }
                 return
             }
@@ -637,17 +614,14 @@ class NotificationViewModel: ObservableObject {
                 throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted.")
             }
             let notifications = try decoder.decode([NotificationItem].self, from: data)
-            print("[DEBUG] Parsed notifications: \(notifications)")
             await MainActor.run { self.notifications = notifications }
         } catch {
-            print("[DEBUG] Error fetching notifications: \(error)")
             await MainActor.run { self.errorMessage = error.localizedDescription }
         }
     }
     
     func respond(to notification: NotificationItem, response: String, comment: String) async {
-        print("[DEBUG] respond called for notification id: \(notification.id), response: \(response), comment: \(comment)")
-        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications/\(notification.id)/respond") else { print("[DEBUG] Invalid URL"); return }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications/\(notification.id)/respond") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -658,9 +632,7 @@ class NotificationViewModel: ObservableObject {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         do {
             let (data, httpResponse) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] Respond API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = httpResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("[DEBUG] HTTP error: \(httpResponse as? HTTPURLResponse)?.statusCode ?? -1)")
                 await MainActor.run { self.errorMessage = "Failed to respond to notification." }
                 return
             }
@@ -668,7 +640,6 @@ class NotificationViewModel: ObservableObject {
                 await MainActor.run { self.notifications[idx].status = response }
             }
         } catch {
-            print("[DEBUG] Error responding to notification: \(error)")
             await MainActor.run { self.errorMessage = error.localizedDescription }
         }
     }
@@ -683,25 +654,20 @@ class InvitationListViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
 
     func fetchInvitationsAndBoards() async {
-        print("[DEBUG] fetchInvitationsAndBoards called")
         let accessToken = KeychainHelper.get("accessToken")
-        print("[DEBUG] Access token: \(accessToken ?? "nil")")
         guard let token = accessToken, !token.isEmpty else {
-            print("[DEBUG] No access token found. User is not logged in.")
             await MainActor.run { self.errorMessage = "Not logged in. Please sign in again." }
             return
         }
         await MainActor.run { self.isLoading = true }
         defer { Task { await MainActor.run { self.isLoading = false } } }
-        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/invitations/user?status=pending") else { print("[DEBUG] Invalid URL"); return }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/invitations/user?status=pending") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] Invitations API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("[DEBUG] HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
                 await MainActor.run { self.errorMessage = "Failed to fetch invitations." }
                 return
             }
@@ -722,7 +688,6 @@ class InvitationListViewModel: ObservableObject {
             }
             let result = try decoder.decode([String: [Invitation]].self, from: data)
             let invitations = result["invitations"] ?? []
-            print("[DEBUG] Parsed invitations: \(invitations)")
             await MainActor.run { self.invitations = invitations }
             // Fetch vision boards and sender info for each invitation
             for invitation in invitations {
@@ -734,7 +699,6 @@ class InvitationListViewModel: ObservableObject {
                 }
             }
         } catch {
-            print("[DEBUG] Error fetching invitations: \(error)")
             await MainActor.run { self.errorMessage = error.localizedDescription }
         }
     }
@@ -753,7 +717,6 @@ class InvitationListViewModel: ObservableObject {
             let user = try decoder.decode(User.self, from: data)
             await MainActor.run { self.senders[user.id] = user }
         } catch {
-            print("[DEBUG] Error fetching sender: \(error)")
         }
     }
 
@@ -765,7 +728,6 @@ class InvitationListViewModel: ObservableObject {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] VisionBoard API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .custom { decoder in
@@ -786,7 +748,6 @@ class InvitationListViewModel: ObservableObject {
             let vb = result.visionboard
             await MainActor.run { self.visionBoards[vb.id] = vb }
         } catch {
-            print("[DEBUG] Error fetching vision board: \(error)")
         }
     }
 
@@ -798,7 +759,6 @@ class InvitationListViewModel: ObservableObject {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] GenreWithAssignments API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .custom { decoder in
@@ -820,7 +780,6 @@ class InvitationListViewModel: ObservableObject {
             await MainActor.run { self.genres[genre.id] = genre }
             await fetchVisionBoard(visionboardId: genre.visionboardId, token: token)
         } catch {
-            print("[DEBUG] Error fetching genre/vision board: \(error)")
         }
     }
 
@@ -837,14 +796,12 @@ class InvitationListViewModel: ObservableObject {
         }
         do {
             let (data, httpResponse) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] Invitation respond API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = httpResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             // Update status locally
             if let idx = self.invitations.firstIndex(where: { $0.id == invitation.id }) {
                 await MainActor.run { self.invitations[idx].status = response.lowercased() }
             }
         } catch {
-            print("[DEBUG] Error responding to invitation: \(error)")
         }
     }
 }
@@ -892,12 +849,10 @@ extension Creatist {
                     let assignmentsResult = try decoder.decode(GenreWithAssignmentsResponse.self, from: assignmentsData)
                     genresWithAssignments.append(assignmentsResult.genre)
                 } catch {
-                    print("[DEBUG] Error fetching assignments for genre \(genre.id): \(error)")
                 }
             }
             return genresWithAssignments
         } catch {
-            print("[DEBUG] Error fetching genres/assignments: \(error)")
             return []
         }
     }
@@ -918,7 +873,6 @@ extension Creatist {
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return false }
             return true
         } catch {
-            print("[DEBUG] Error starting vision: \(error)")
             return false
         }
     }
@@ -954,7 +908,6 @@ extension Creatist {
             // (Assume backend sends invite on assignment creation)
             return true
         } catch {
-            print("[DEBUG] Error adding assignment: \(error)")
             return false
         }
     }
@@ -988,7 +941,6 @@ extension Creatist {
             let result = try decoder.decode(GenresResponse.self, from: data)
             return result.visionboard.genres.map { $0.name }
         } catch {
-            print("[DEBUG] Error fetching genres for vision board: \(error)")
             return []
         }
     }
@@ -1027,7 +979,6 @@ extension Creatist {
                 return PostCollaboratorCreate(user_id: collaborator.user_id, role: mappedRole)
             }
         } catch {
-            print("[DEBUG] Error fetching collaborators for visionboard: \(error)")
             return []
         }
     }
@@ -1188,7 +1139,7 @@ extension Creatist {
 
     // Following feed with pagination
     func fetchFollowingFeed(limit: Int = 10, cursor: String? = nil) async -> PaginatedPosts {
-        var url = "/posts/feed?limit=\(limit)"
+        var url = "/posts/following?limit=\(limit)"
         
         if let cursor = cursor {
             // Send cursor as JSON object in URL parameter (URL-encoded)

@@ -15,6 +15,7 @@ class CacheManager: ObservableObject {
         static let visionBoardUsers = "vision_board_users"
         static let lastFetchTime = "last_fetch_time"
         static let cacheExpiration = "cache_expiration"
+        static let currentUserId = "current_user_id"
     }
     
     // MARK: - Cache Configuration
@@ -36,6 +37,27 @@ class CacheManager: ObservableObject {
     
     private init() {
         loadCachedData()
+        // User change check will be done when onUserLogin() is called
+    }
+    
+    // MARK: - User Change Detection
+    @MainActor
+    private func checkUserChange() {
+        let currentUserId = Creatist.shared.user?.id.uuidString
+        let cachedUserId = UserDefaults.standard.string(forKey: CacheKeys.currentUserId)
+        
+        // If user changed, clear all caches
+        if let currentUserId = currentUserId, cachedUserId != currentUserId {
+            invalidateAllCaches()
+            UserDefaults.standard.set(currentUserId, forKey: CacheKeys.currentUserId)
+        } else if currentUserId == nil && cachedUserId != nil {
+            // User logged out, clear caches
+            invalidateAllCaches()
+            UserDefaults.standard.removeObject(forKey: CacheKeys.currentUserId)
+        } else if let currentUserId = currentUserId {
+            // User logged in, update cached user ID
+            UserDefaults.standard.set(currentUserId, forKey: CacheKeys.currentUserId)
+        }
     }
     
     // MARK: - Public Methods
@@ -203,6 +225,17 @@ class CacheManager: ObservableObject {
         lastFetchTimes.removeAll()
         cacheExpirationTimes.removeAll()
         saveCachedData()
+    }
+    
+    // MARK: - User Change Handling
+    @MainActor
+    func onUserLogin() {
+        checkUserChange()
+    }
+    
+    func onUserLogout() {
+        invalidateAllCaches()
+        UserDefaults.standard.removeObject(forKey: CacheKeys.currentUserId)
     }
     
     func clearExpiredCaches() {
