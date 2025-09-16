@@ -307,11 +307,11 @@ struct CreateSelfPostSheet: View {
                                 let ext = (item.type == "video") ? ".mov" : ".jpg"
                                 let fileName = UUID().uuidString + ext
                                 let uploadPath = "posts/\(userId.uuidString)/\(newPostId.uuidString)/\(fileName)"
-                                let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
+                                let supabaseUrl = EnvironmentConfig.shared.supabaseURL
                                 let uploadUrlString = "\(supabaseUrl)/storage/v1/object/\(uploadPath)"
                                 var request = URLRequest(url: URL(string: uploadUrlString)!)
                                 request.httpMethod = "PUT"
-                                request.setValue("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk", forHTTPHeaderField: "Authorization")
+                                request.setValue("Bearer \(EnvironmentConfig.shared.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
                                 request.setValue(item.type == "video" ? "video/quicktime" : "image/jpeg", forHTTPHeaderField: "Content-Type")
                                 print("[DEBUG] [Upload] Uploading media #\(idx+1): \(fileName), type=\(item.type), size=\(item.data.count) bytes")
                                 print("[DEBUG] [Upload] Upload URL: \(uploadUrlString)")

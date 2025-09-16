@@ -73,6 +73,21 @@ class EnvironmentConfig {
         return url
     }
     
+    var supabaseURL: String {
+        switch currentEnvironment {
+        case .development:
+            return "https://wkmribpqhgdpklwovrov.supabase.co"
+        case .staging:
+            return "https://wkmribpqhgdpklwovrov.supabase.co"
+        case .production:
+            return "https://wkmribpqhgdpklwovrov.supabase.co"
+        }
+    }
+    
+    var supabaseAnonKey: String {
+        return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk"
+    }
+    
     // Helper method to get WebSocket URL for specific endpoints
     func wsURL(for endpoint: String) -> String {
         return "\(wsBaseURL)\(endpoint)"

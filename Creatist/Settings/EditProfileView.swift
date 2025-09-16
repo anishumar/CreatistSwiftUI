@@ -21,8 +21,8 @@ struct EditProfileView: View {
     var onCancel: (() -> Void)? = nil
 
     // MARK: - Supabase Storage Config
-    private let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
-    private let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk"
+    private let supabaseUrl = EnvironmentConfig.shared.supabaseURL
+    private let supabaseAnonKey = EnvironmentConfig.shared.supabaseAnonKey
     private let supabaseBucket = "profile-images" // <-- Updated bucket name
 
     var body: some View {

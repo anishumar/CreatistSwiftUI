@@ -1052,7 +1052,7 @@ extension Creatist {
             print("[Creatist] Draft media file is too large (\(data.count) bytes). Max allowed is \(maxSize) bytes.")
             return nil
         }
-        let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
+        let supabaseUrl = EnvironmentConfig.shared.supabaseURL
         let supabaseBucket = "drafts"
         let ext = (mediaType == "video") ? ".mov" : ".jpg"
         let fileName = UUID().uuidString + ext
@@ -1061,8 +1061,7 @@ extension Creatist {
         guard let uploadUrl = URL(string: uploadUrlString) else { return nil }
         var request = URLRequest(url: uploadUrl)
         request.httpMethod = "PUT"
-        let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk"
-        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(EnvironmentConfig.shared.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(mediaType == "video" ? "video/quicktime" : "image/jpeg", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         do {
@@ -1087,7 +1086,7 @@ extension Creatist {
             print("[Creatist] Post media file is too large (\(data.count) bytes). Max allowed is \(maxSize) bytes.")
             return nil
         }
-        let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
+        let supabaseUrl = EnvironmentConfig.shared.supabaseURL
         let ext = (mediaType == "video") ? ".mov" : ".jpg"
         let fileName = UUID().uuidString + ext
         let uploadPath = "posts/\(userId.uuidString)/\(postId.uuidString)/\(fileName)"
@@ -1095,8 +1094,7 @@ extension Creatist {
         guard let uploadUrl = URL(string: uploadUrlString) else { return nil }
         var request = URLRequest(url: uploadUrl)
         request.httpMethod = "PUT"
-        let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk"
-        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(EnvironmentConfig.shared.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(mediaType == "video" ? "video/quicktime" : "image/jpeg", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         do {
