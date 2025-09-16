@@ -15,6 +15,7 @@ struct LoginView: View {
     @State private var isLoading: Bool = false
     @State private var errorMessage: String? = nil
     @State private var showSignup: Bool = false
+    @State private var showOTP: Bool = false
     @FocusState private var focusedField: Field?
     
     enum Field {
@@ -76,10 +77,29 @@ struct LoginView: View {
                 .sheet(isPresented: $showSignup) {
                     SignupView()
                 }
+                .sheet(isPresented: $showOTP) {
+                    OTPView(email: email) {
+                        isLoggedIn = true
+                    }
+                }
             }
             .padding(.top, 16)
             
             Spacer()
+            
+            // Made with love in India footer
+            HStack {
+                Text("Made with")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Image(systemName: "heart.fill")
+                    .foregroundColor(.red)
+                    .font(.caption)
+                Text("in India")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.bottom, 20)
         }
         .padding()
         .onTapGesture {
@@ -95,16 +115,20 @@ struct LoginView: View {
         }
         isLoading = true
         Task {
-            let success = await Creatist.shared.login(email: email, password: password)
+            let result = await Creatist.shared.login(email: email, password: password)
             await MainActor.run {
                 isLoading = false
-                if !success {
-                    errorMessage = "Invalid credentials or user not found."
-                } else {
+                switch result {
+                case .success:
                     errorMessage = nil
                     isLoggedIn = true
                     // Start token monitoring after successful login
                     TokenMonitor.shared.startMonitoring()
+                case .failure(let error):
+                    errorMessage = error
+                case .requiresVerification:
+                    errorMessage = "Account not verified. Please verify your email with the OTP sent to you."
+                    showOTP = true
                 }
             }
         }

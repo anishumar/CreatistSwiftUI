@@ -11,39 +11,61 @@ class Creatist {
     // In-memory cache for vision board users
     var visionBoardUserCache: [UUID: [User]] = [:]
     
-    private func _login(email: String, password: String) async -> LoginResponse? {
+    private func _login(email: String, password: String) async -> (LoginResponse?, Int) {
         let credentials = Credential(email: email, password: password)
         guard let data = credentials.toData() else {
-            return nil
+            return (nil, 0)
         }
-        return await NetworkManager.shared.post(url: "/auth/signin", body: data)
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/signin", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return (nil, statusCode)
+        }
+        
+        do {
+            let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
+            return (loginResponse, statusCode)
+        } catch {
+            print("Login decode error: \(error)")
+            return (nil, statusCode)
+        }
     }
     
     func clearUserCache() {
                 visionBoardUserCache.removeAll()
             }
     
-    func login(email: String, password: String) async -> Bool {
-        let loginResponse: LoginResponse? = await _login(email: email, password: password)
-        if loginResponse?.message == "success",
-           let accessToken = loginResponse?.access_token,
-           let refreshToken = loginResponse?.refresh_token {
-            KeychainHelper.set(email, forKey: "email")
-            KeychainHelper.set(password, forKey: "password")
-            KeychainHelper.set(accessToken, forKey: "accessToken")
-            KeychainHelper.set(refreshToken, forKey: "refreshToken")
-            
-            // Store token expiration time if provided
-            if let expiresIn = loginResponse?.expires_in {
-                let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
-                KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
-                print("🔐 Login: Token expiration set to \(expirationTime)")
+    func login(email: String, password: String) async -> LoginResult {
+        let (loginResponse, statusCode) = await _login(email: email, password: password)
+        
+        switch statusCode {
+        case 200:
+            if loginResponse?.message == "success",
+               let accessToken = loginResponse?.access_token,
+               let refreshToken = loginResponse?.refresh_token {
+                KeychainHelper.set(email, forKey: "email")
+                KeychainHelper.set(password, forKey: "password")
+                KeychainHelper.set(accessToken, forKey: "accessToken")
+                KeychainHelper.set(refreshToken, forKey: "refreshToken")
+                
+                // Store token expiration time if provided
+                if let expiresIn = loginResponse?.expires_in {
+                    let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
+                    KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
+                    print("🔐 Login: Token expiration set to \(expirationTime)")
+                }
+                
+                await self.fetch()
+                return .success
             }
-            
-            await self.fetch()
-            return true
+            return .failure("Login failed")
+        case 401:
+            return .failure("Invalid email or password")
+        case 403:
+            return .requiresVerification
+        default:
+            return .failure("Login failed")
         }
-        return false
     }
     
     func autologin() async -> Bool? {
@@ -52,33 +74,58 @@ class Creatist {
         guard let email, let password else {
             return false
         }
-        let response = await _login(email: email, password: password)
-        if response?.message == "success",
-           let accessToken = response?.access_token,
-           let refreshToken = response?.refresh_token {
-            KeychainHelper.set(accessToken, forKey: "accessToken")
-            KeychainHelper.set(refreshToken, forKey: "refreshToken")
-            if let expiresIn = response?.expires_in {
-                let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
-                KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
-                print("🔐 Autologin: Token expiration set to \(expirationTime)")
-            }
-            await self.fetch()
+        let result = await login(email: email, password: password)
+        switch result {
+        case .success:
             return true
-        }
-        return false
-    }
-    
-    func signup(_ user: User) async -> Bool {
-        guard let data = user.toData() else {
+        case .failure, .requiresVerification:
             return false
         }
-        let response: Response? = await NetworkManager.shared.post(url: "/auth/signup", body: data)
-        if response?.message == "success" {
-            KeychainHelper.set(user.email, forKey: "email")
-            KeychainHelper.set(user.password, forKey: "password")
+    }
+    
+    func signup(_ user: User) async -> SignupResult {
+        guard let data = user.toData() else {
+            return .failure("Invalid user data")
         }
-        return response?.message == "success"
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/signup", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("Signup failed")
+        }
+        
+        do {
+            // Try to decode as new SignupResponse first
+            if let signupResponse = try? JSONDecoder().decode(SignupResponse.self, from: data) {
+                if signupResponse.message == "success" {
+                    KeychainHelper.set(user.email, forKey: "email")
+                    KeychainHelper.set(user.password, forKey: "password")
+                    
+                    if signupResponse.requiresVerification {
+                        return .requiresVerification
+                    } else {
+                        return .success
+                    }
+                } else {
+                    return .failure(signupResponse.message)
+                }
+            } else {
+                // Fallback to old Response format
+                let response = try JSONDecoder().decode(Response.self, from: data)
+                if response.message == "success" {
+                    KeychainHelper.set(user.email, forKey: "email")
+                    KeychainHelper.set(user.password, forKey: "password")
+                    
+                    // For old backend, assume new users need verification
+                    return .requiresVerification
+                } else {
+                    return .failure(response.message)
+                }
+            }
+        } catch {
+            print("Signup decode error: \(error)")
+            print("Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
+            return .failure("Signup failed")
+        }
     }
     
     func fetch() async {
@@ -102,16 +149,47 @@ class Creatist {
         return await NetworkManager.shared.post(url: "/auth/otp", body: data)
     }
     
-    func verifyOTP(_ otp: String) async -> Bool? {
+    func verifyOTP(_ otp: String) async -> OTPResult {
         let email = KeychainHelper.get("email")
         guard let email else {
-            return false
+            return .failure("Email not found")
         }
         let otpRequest = OTPRequest(email_address: email, otp: otp)
         guard let data = try? JSONEncoder().encode(otpRequest) else {
-            return false
+            return .failure("Invalid OTP data")
         }
-        return await NetworkManager.shared.post(url: "/auth/otp/verify", body: data)
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/otp/verify", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("OTP verification failed")
+        }
+        
+        do {
+            let response = try JSONDecoder().decode(Response.self, from: data)
+            if response.message == "success" {
+                // After successful OTP verification, automatically attempt login
+                let password = KeychainHelper.get("password")
+                if let password = password {
+                    let loginResult = await login(email: email, password: password)
+                    switch loginResult {
+                    case .success:
+                        return .success
+                    case .failure(let error):
+                        return .failure("OTP verified but login failed: \(error)")
+                    case .requiresVerification:
+                        return .failure("OTP verification failed")
+                    }
+                } else {
+                    return .failure("Password not found")
+                }
+            } else {
+                return .failure(response.message)
+            }
+        } catch {
+            print("OTP verification decode error: \(error)")
+            return .failure("OTP verification failed")
+        }
     }
     
     func fetchUsers(for genre: UserGenre) async -> [User] {

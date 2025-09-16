@@ -11,41 +11,72 @@ struct SignupView: View {
     @State private var errorMessage: String? = nil
     @State private var showOTP: Bool = false
     @State private var otpEmail: String = ""
+    @State private var isSignupComplete: Bool = false
+    @State private var otp: String = ""
     
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                Text("Sign Up")
-                    .font(.largeTitle)
-                    .bold()
-                    .padding(.top, 24)
-                
-                TextField("First Name", text: $firstName)
-                    .autocapitalization(.words)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
-                TextField("Last Name", text: $lastName)
-                    .autocapitalization(.words)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
-                TextField("Email", text: $email)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
-                SecureField("Password", text: $password)
-                    .textContentType(.newPassword)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
-                SecureField("Confirm Password", text: $confirmPassword)
-                    .textContentType(.newPassword)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
+                if !isSignupComplete {
+                    Text("Sign Up")
+                        .font(.largeTitle)
+                        .bold()
+                        .padding(.top, 24)
+                    
+                    TextField("First Name", text: $firstName)
+                        .autocapitalization(.words)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                    TextField("Last Name", text: $lastName)
+                        .autocapitalization(.words)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                    TextField("Email", text: $email)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                    SecureField("Password", text: $password)
+                        .textContentType(.newPassword)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                    SecureField("Confirm Password", text: $confirmPassword)
+                        .textContentType(.newPassword)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                } else {
+                    // Show verification step
+                    VStack(spacing: 16) {
+                        Image(systemName: "envelope.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.accentColor)
+                        
+                        Text("Verify Your Email")
+                            .font(.title2)
+                            .bold()
+                        
+                        Text("We've sent a verification code to")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        Text(otpEmail)
+                            .font(.subheadline)
+                            .bold()
+                            .foregroundColor(.primary)
+                        
+                        Text("Please check your email and enter the code below to complete your registration.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .padding(.top, 40)
+                }
                 
                 if let errorMessage = errorMessage {
                     Text(errorMessage)
@@ -53,11 +84,23 @@ struct SignupView: View {
                         .font(.subheadline)
                 }
                 
-                Button(action: signup) {
+                if isSignupComplete {
+                    // OTP Input Field
+                    TextField("Enter verification code", text: $otp)
+                        .keyboardType(.numberPad)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                        .multilineTextAlignment(.center)
+                        .font(.title2)
+                        .bold()
+                }
+                
+                Button(action: isSignupComplete ? verifyOTP : signup) {
                     if isLoading {
                         ProgressView()
                     } else {
-                        Text("Sign Up")
+                        Text(isSignupComplete ? "Verify & Complete Signup" : "Sign Up")
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.accentColor)
@@ -74,12 +117,17 @@ struct SignupView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-            .sheet(isPresented: $showOTP) {
-                OTPView(email: otpEmail) {
-                    dismiss() // On successful OTP, dismiss signup
+                    if isSignupComplete {
+                        Button("Back") {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                isSignupComplete = false
+                                otp = ""
+                                errorMessage = nil
+                            }
+                        }
+                    } else {
+                        Button("Cancel") { dismiss() }
+                    }
                 }
             }
         }
@@ -98,22 +146,42 @@ struct SignupView: View {
         isLoading = true
         Task {
             let user = User(id: UUID(), name: firstName + " " + lastName, email: email, password: password)
-            let success = await Creatist.shared.signup(user)
-            if success {
-                let otpSent = await Creatist.shared.requestOTP()
-                await MainActor.run {
-                    isLoading = false
-                    if otpSent == true {
-                        otpEmail = email
-                        showOTP = true
-                    } else {
-                        errorMessage = "Failed to send OTP. Try again."
+            let result = await Creatist.shared.signup(user)
+            await MainActor.run {
+                isLoading = false
+                switch result {
+                case .success:
+                    // For existing users who don't need verification
+                    dismiss()
+                case .requiresVerification:
+                    // For new users who need OTP verification - transition to verification mode
+                    otpEmail = email
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        isSignupComplete = true
                     }
+                case .failure(let error):
+                    errorMessage = error
                 }
-            } else {
-                await MainActor.run {
-                    isLoading = false
-                    errorMessage = "Signup failed. Try again."
+            }
+        }
+    }
+    
+    func verifyOTP() {
+        errorMessage = nil
+        guard !otp.isEmpty else {
+            errorMessage = "Please enter the verification code."
+            return
+        }
+        isLoading = true
+        Task {
+            let result = await Creatist.shared.verifyOTP(otp)
+            await MainActor.run {
+                isLoading = false
+                switch result {
+                case .success:
+                    dismiss() // On successful OTP verification, dismiss signup
+                case .failure(let error):
+                    errorMessage = error
                 }
             }
         }

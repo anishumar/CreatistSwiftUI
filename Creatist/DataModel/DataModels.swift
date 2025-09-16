@@ -184,6 +184,28 @@ struct LoginResponse: Codable {
     let expires_in: Int?
 }
 
+struct SignupResponse: Codable {
+    let message: String
+    let requiresVerification: Bool
+}
+
+enum LoginResult {
+    case success
+    case failure(String)
+    case requiresVerification
+}
+
+enum SignupResult {
+    case success
+    case failure(String)
+    case requiresVerification
+}
+
+enum OTPResult {
+    case success
+    case failure(String)
+}
+
 struct Response: Codable {
     let message: String
 }

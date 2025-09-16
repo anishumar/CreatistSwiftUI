@@ -201,10 +201,6 @@ actor NetworkManager {
                 return nil
             }
 
-            if httpResponse.statusCode != 200 {
-                // HTTP error - status code not 200
-            }
-
             if httpResponse.statusCode == 401 && retryOn401 {
                 // Try to refresh token
                 let refreshed = await refreshToken()
@@ -341,5 +337,30 @@ actor NetworkManager {
             }
         }
         return (data, response)
+    }
+    
+    /// Makes an auth request and returns both data and status code for proper error handling
+    func authRequest(url: String, method: HTTPMethod, body: Data? = nil) async -> (Data?, Int) {
+        guard let url = URL(string: endpoint + url) else {
+            return (nil, 0)
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = method.rawValue
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        if let body = body {
+            request.httpBody = body
+        }
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return (nil, 0)
+            }
+            return (data, httpResponse.statusCode)
+        } catch {
+            return (nil, 0)
+        }
     }
 } 
