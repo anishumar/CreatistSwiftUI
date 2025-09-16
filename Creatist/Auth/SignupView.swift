@@ -7,6 +7,8 @@ struct SignupView: View {
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var confirmPassword: String = ""
+    @State private var showPassword: Bool = false
+    @State private var showConfirmPassword: Bool = false
     @State private var isLoading: Bool = false
     @State private var errorMessage: String? = nil
     @State private var showOTP: Bool = false
@@ -39,16 +41,41 @@ struct SignupView: View {
                         .padding()
                         .background(Color(.secondarySystemBackground))
                         .cornerRadius(8)
-                    SecureField("Password", text: $password)
-                        .textContentType(.newPassword)
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(8)
-                    SecureField("Confirm Password", text: $confirmPassword)
-                        .textContentType(.newPassword)
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(8)
+                    HStack {
+                        if showPassword {
+                            TextField("Password", text: $password)
+                                .textContentType(.newPassword)
+                        } else {
+                            SecureField("Password", text: $password)
+                                .textContentType(.newPassword)
+                        }
+                        
+                        Button(action: { showPassword.toggle() }) {
+                            Image(systemName: showPassword ? "eye.slash" : "eye")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(8)
+                    
+                    HStack {
+                        if showConfirmPassword {
+                            TextField("Confirm Password", text: $confirmPassword)
+                                .textContentType(.newPassword)
+                        } else {
+                            SecureField("Confirm Password", text: $confirmPassword)
+                                .textContentType(.newPassword)
+                        }
+                        
+                        Button(action: { showConfirmPassword.toggle() }) {
+                            Image(systemName: showConfirmPassword ? "eye.slash" : "eye")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(8)
                 } else {
                     // Show verification step
                     VStack(spacing: 16) {

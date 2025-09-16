@@ -187,6 +187,7 @@ struct LoginResponse: Codable {
 struct SignupResponse: Codable {
     let message: String
     let requiresVerification: Bool
+    let temp_id: String?
 }
 
 enum LoginResult {
@@ -202,6 +203,16 @@ enum SignupResult {
 }
 
 enum OTPResult {
+    case success
+    case failure(String)
+}
+
+enum ForgotPasswordResult {
+    case success
+    case failure(String)
+}
+
+enum ResetPasswordResult {
     case success
     case failure(String)
 }
@@ -256,6 +267,28 @@ struct Follower: Codable, Sendable {
 struct OTPRequest: Codable, Sendable {
     var email_address: String
     var otp: String?
+    var temp_id: String?
+}
+
+struct ForgotPasswordRequest: Codable, Sendable {
+    var email: String
+}
+
+struct ResetPasswordRequest: Codable, Sendable {
+    var email: String
+    var new_password: String
+    var otp: String
+}
+
+struct ForgotPasswordResponse: Codable {
+    let message: String
+    let requiresVerification: Bool
+    let temp_id: String?
+}
+
+struct ResetPasswordResponse: Codable {
+    let message: String
+    let success: Bool?
 }
 
 struct UsersResponse: Codable {

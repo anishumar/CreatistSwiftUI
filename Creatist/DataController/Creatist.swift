@@ -96,16 +96,25 @@ class Creatist {
         do {
             // Try to decode as new SignupResponse first
             if let signupResponse = try? JSONDecoder().decode(SignupResponse.self, from: data) {
-                if signupResponse.message == "success" {
+                if signupResponse.requiresVerification {
+                    // Store user credentials for later use
                     KeychainHelper.set(user.email, forKey: "email")
                     KeychainHelper.set(user.password, forKey: "password")
                     
-                    if signupResponse.requiresVerification {
+                    // Store temp_id for OTP verification
+                    if let tempId = signupResponse.temp_id {
+                        KeychainHelper.set(tempId, forKey: "temp_id")
+                    }
+                    
+                    // Send OTP after successful signup
+                    let otpSent = await requestOTP()
+                    if otpSent == true {
                         return .requiresVerification
                     } else {
-                        return .success
+                        return .failure("Failed to send OTP")
                     }
                 } else {
+                    // User already exists or other error
                     return .failure(signupResponse.message)
                 }
             } else {
@@ -146,7 +155,76 @@ class Creatist {
         guard let data = try? JSONEncoder().encode(otpRequest) else {
             return false
         }
-        return await NetworkManager.shared.post(url: "/auth/otp", body: data)
+        return await NetworkManager.shared.post<Bool>(url: "/auth/otp", body: data) ?? false
+    }
+    
+    func requestForgotPasswordOTP(email: String) async -> ForgotPasswordResult {
+        let forgotRequest = ForgotPasswordRequest(email: email)
+        guard let data = try? JSONEncoder().encode(forgotRequest) else {
+            return .failure("Invalid request data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/forgot-password", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("Request failed")
+        }
+        
+        do {
+            let response = try JSONDecoder().decode(ForgotPasswordResponse.self, from: data)
+            if response.requiresVerification {
+                // Store email and temp_id for password reset
+                KeychainHelper.set(email, forKey: "reset_email")
+                if let tempId = response.temp_id {
+                    KeychainHelper.set(tempId, forKey: "reset_temp_id")
+                }
+                
+                // OTP is already sent by the backend, no need to send again
+                return .success
+            } else {
+                return .failure(response.message)
+            }
+        } catch {
+            print("Forgot password decode error: \(error)")
+            // Try to decode as error response
+            if let errorResponse = try? JSONDecoder().decode(ForgotPasswordResponse.self, from: data) {
+                return .failure(errorResponse.message)
+            }
+            return .failure("Request failed")
+        }
+    }
+    
+    func resetPassword(newPassword: String, otp: String) async -> ResetPasswordResult {
+        let email = KeychainHelper.get("reset_email")
+        guard let email else {
+            return .failure("Email not found")
+        }
+        
+        let resetRequest = ResetPasswordRequest(email: email, new_password: newPassword, otp: otp)
+        guard let data = try? JSONEncoder().encode(resetRequest) else {
+            return .failure("Invalid request data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/reset-password", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("Reset failed")
+        }
+        
+        do {
+            let response = try JSONDecoder().decode(ResetPasswordResponse.self, from: data)
+            if response.success == true {
+                // Clear reset data
+                KeychainHelper.remove("reset_email")
+                KeychainHelper.remove("reset_temp_id")
+                return .success
+            } else {
+                return .failure(response.message)
+            }
+        } catch {
+            print("Reset password decode error: \(error)")
+            return .failure("Reset failed")
+        }
     }
     
     func verifyOTP(_ otp: String) async -> OTPResult {
@@ -154,7 +232,10 @@ class Creatist {
         guard let email else {
             return .failure("Email not found")
         }
-        let otpRequest = OTPRequest(email_address: email, otp: otp)
+        
+        // Check if this is a new user registration (has temp_id)
+        let tempId = KeychainHelper.get("temp_id")
+        let otpRequest = OTPRequest(email_address: email, otp: otp, temp_id: tempId)
         guard let data = try? JSONEncoder().encode(otpRequest) else {
             return .failure("Invalid OTP data")
         }
@@ -167,7 +248,10 @@ class Creatist {
         
         do {
             let response = try JSONDecoder().decode(Response.self, from: data)
-            if response.message == "success" {
+            if response.message == "success" || response.message == "Registration completed successfully! You can now login." {
+                // Clear temp_id after successful verification
+                KeychainHelper.remove("temp_id")
+                
                 // After successful OTP verification, automatically attempt login
                 let password = KeychainHelper.get("password")
                 if let password = password {
@@ -183,6 +267,32 @@ class Creatist {
                 } else {
                     return .failure("Password not found")
                 }
+            } else {
+                return .failure(response.message)
+            }
+        } catch {
+            print("OTP verification decode error: \(error)")
+            return .failure("OTP verification failed")
+        }
+    }
+    
+    func verifyOTP(email: String, otp: String) async -> OTPResult {
+        // For forgot password flow - verify OTP with email
+        let otpRequest = OTPRequest(email_address: email, otp: otp, temp_id: nil)
+        guard let data = try? JSONEncoder().encode(otpRequest) else {
+            return .failure("Invalid OTP data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/otp/verify", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("OTP verification failed")
+        }
+        
+        do {
+            let response = try JSONDecoder().decode(Response.self, from: data)
+            if response.message == "success" || response.message == "Registration completed successfully! You can now login." || response.message == "Email verified successfully" {
+                return .success
             } else {
                 return .failure(response.message)
             }

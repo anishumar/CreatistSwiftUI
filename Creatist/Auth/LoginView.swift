@@ -12,10 +12,11 @@ struct LoginView: View {
     @Binding var isLoggedIn: Bool
     @State private var email: String = ""
     @State private var password: String = ""
+    @State private var showPassword: Bool = false
     @State private var isLoading: Bool = false
     @State private var errorMessage: String? = nil
-    @State private var showSignup: Bool = false
-    @State private var showOTP: Bool = false
+    @State private var resetEmail: String = ""
+    @State private var navigationPath: [String] = []
     @FocusState private var focusedField: Field?
     
     enum Field {
@@ -23,7 +24,8 @@ struct LoginView: View {
     }
     
     var body: some View {
-        VStack(spacing: 24) {
+        NavigationStack(path: $navigationPath) {
+            VStack(spacing: 24) {
             Text("Login")
                 .font(.largeTitle)
                 .bold()
@@ -38,12 +40,24 @@ struct LoginView: View {
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(8)
                     .focused($focusedField, equals: .email)
-                SecureField("Password", text: $password)
-                    .textContentType(.password)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
-                    .focused($focusedField, equals: .password)
+                HStack {
+                    if showPassword {
+                        TextField("Password", text: $password)
+                            .textContentType(.password)
+                    } else {
+                        SecureField("Password", text: $password)
+                            .textContentType(.password)
+                    }
+                    
+                    Button(action: { showPassword.toggle() }) {
+                        Image(systemName: showPassword ? "eye.slash" : "eye")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(8)
+                .focused($focusedField, equals: .password)
             }
             
             if let errorMessage = errorMessage {
@@ -59,7 +73,7 @@ struct LoginView: View {
                     Text("Login")
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.accentColor)
+                        .background(isLoading ? Color.gray : Color.accentColor)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                 }
@@ -67,20 +81,20 @@ struct LoginView: View {
             .disabled(isLoading)
             .padding(.top, 8)
             
-            HStack {
-                Text("New user?")
-                Button(action: { showSignup = true }) {
-                    Text("Sign up now")
-                        .foregroundColor(.accentColor)
-                        .bold()
-                }
-                .sheet(isPresented: $showSignup) {
-                    SignupView()
-                }
-                .sheet(isPresented: $showOTP) {
-                    OTPView(email: email) {
-                        isLoggedIn = true
+            VStack(spacing: 12) {
+                HStack {
+                    Text("New user?")
+                    Button(action: { navigationPath.append("signup") }) {
+                        Text("Sign up now")
+                            .foregroundColor(.accentColor)
+                            .bold()
                     }
+                }
+                
+                Button(action: { navigationPath.append("forgotPassword") }) {
+                    Text("Forgot Password?")
+                        .foregroundColor(.accentColor)
+                        .font(.subheadline)
                 }
             }
             .padding(.top, 16)
@@ -100,10 +114,33 @@ struct LoginView: View {
                     .foregroundColor(.secondary)
             }
             .padding(.bottom, 20)
-        }
-        .padding()
-        .onTapGesture {
-            hideKeyboard()
+            }
+            .padding()
+            .onTapGesture {
+                hideKeyboard()
+            }
+            .navigationDestination(for: String.self) { destination in
+                switch destination {
+                case "forgotPassword":
+                    ForgotPasswordView { email in
+                        resetEmail = email
+                        navigationPath.append("resetPassword")
+                    }
+                case "resetPassword":
+                    ResetPasswordView(email: resetEmail) {
+                        // Password reset successful - navigate back to login
+                        navigationPath.removeAll()
+                    }
+                case "signup":
+                    SignupView()
+                case "otp":
+                    OTPView(email: email) {
+                        isLoggedIn = true
+                    }
+                default:
+                    EmptyView()
+                }
+            }
         }
     }
     
@@ -128,7 +165,7 @@ struct LoginView: View {
                     errorMessage = error
                 case .requiresVerification:
                     errorMessage = "Account not verified. Please verify your email with the OTP sent to you."
-                    showOTP = true
+                    navigationPath.append("otp")
                 }
             }
         }
