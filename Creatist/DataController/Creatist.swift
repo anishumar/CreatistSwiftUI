@@ -650,6 +650,7 @@ class Creatist {
             "username": user.username,
             "description": user.description,
             "age": user.age,
+            "dob": user.dob,
             "genres": user.genres?.map { $0.rawValue },
             "payment_mode": user.paymentMode?.rawValue,
             "work_mode": user.workMode?.rawValue,

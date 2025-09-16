@@ -153,11 +153,16 @@ struct EditProfileView: View {
         guard let user = Creatist.shared.user else { return }
         name = user.name
         description = user.description ?? ""
-        if let userAge = user.age, userAge > 0 {
+        
+        // Load dob from user data if available, otherwise calculate from age
+        if let dobString = user.dob, let dobDate = ISO8601DateFormatter().date(from: dobString + "T00:00:00Z") {
+            dob = dobDate
+        } else if let userAge = user.age, userAge > 0 {
             dob = Calendar.current.date(byAdding: .year, value: -userAge, to: Date()) ?? Calendar.current.date(byAdding: .year, value: -18, to: Date()) ?? Date()
         } else {
             dob = Calendar.current.date(byAdding: .year, value: -18, to: Date()) ?? Date()
         }
+        
         selectedGenres = Set(user.genres ?? [])
         paymentMode = user.paymentMode ?? .free
         workMode = user.workMode ?? .online
@@ -177,6 +182,7 @@ struct EditProfileView: View {
             updatedUser.name = name
             updatedUser.description = description
             updatedUser.age = ageInt
+            updatedUser.dob = ISO8601DateFormatter().string(from: dob).components(separatedBy: "T")[0] // Format as YYYY-MM-DD
             updatedUser.genres = Array(selectedGenres)
             updatedUser.paymentMode = paymentMode
             updatedUser.workMode = workMode

@@ -123,6 +123,7 @@ struct User: Codable, Sendable {
     var password: String
     var profileImageUrl: String?
     var age: Int?
+    var dob: String?
     var genres: [UserGenre]?
     var paymentMode: PaymentMode?
     var workMode: WorkMode?
@@ -142,6 +143,7 @@ struct User: Codable, Sendable {
         case password
         case profileImageUrl = "profile_image_url"
         case age
+        case dob
         case genres
         case paymentMode = "payment_mode"
         case workMode = "work_mode"
