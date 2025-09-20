@@ -257,7 +257,7 @@ extension UserProfileView {
                     .padding(.horizontal, 24)
                     .padding(.top, 8)
             } else {
-                Text(user.email)
+                Text("Update your bio from Settings > Edit Profile")
                     .font(.body)
                     .foregroundColor(Color.secondary)
                     .multilineTextAlignment(.center)

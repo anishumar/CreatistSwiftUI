@@ -53,7 +53,7 @@ struct ProfileView: View {
                         }
                         if let updateMessage = updateMessage {
                             Text(updateMessage)
-                                .foregroundColor(updateMessage == "Location updated successfully!" ? .green : .red)
+                                .foregroundColor(.secondary)
                                 .font(.subheadline)
                         }
                     }
@@ -582,7 +582,7 @@ extension ProfileView {
                     .padding(.horizontal)
                     .padding(.top, 8)
             } else {
-                Text(user.email)
+                Text("Update your bio from Settings > Edit Profile")
                     .font(.body)
                     .foregroundColor(Color.secondary)
                     .multilineTextAlignment(.center)
