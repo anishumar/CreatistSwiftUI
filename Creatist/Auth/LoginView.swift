@@ -17,6 +17,7 @@ struct LoginView: View {
     @State private var errorMessage: String? = nil
     @State private var resetEmail: String = ""
     @State private var navigationPath: [String] = []
+    @State private var showSignupModal: Bool = false
     @FocusState private var focusedField: Field?
     
     enum Field {
@@ -84,7 +85,7 @@ struct LoginView: View {
             VStack(spacing: 12) {
                 HStack {
                     Text("New user?")
-                    Button(action: { navigationPath.append("signup") }) {
+                    Button(action: { showSignupModal = true }) {
                         Text("Sign up now")
                             .foregroundColor(.accentColor)
                             .bold()
@@ -131,8 +132,6 @@ struct LoginView: View {
                         // Password reset successful - navigate back to login
                         navigationPath.removeAll()
                     }
-                case "signup":
-                    SignupView()
                 case "otp":
                     OTPView(email: email) {
                         isLoggedIn = true
@@ -140,6 +139,9 @@ struct LoginView: View {
                 default:
                     EmptyView()
                 }
+            }
+            .sheet(isPresented: $showSignupModal) {
+                SignupView()
             }
         }
     }
