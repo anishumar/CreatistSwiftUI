@@ -20,11 +20,6 @@ struct SignupView: View {
         NavigationView {
             VStack(spacing: 20) {
                 if !isSignupComplete {
-                    Text("Sign Up")
-                        .font(.largeTitle)
-                        .bold()
-                        .padding(.top, 24)
-                    
                     TextField("First Name", text: $firstName)
                         .autocapitalization(.words)
                         .padding()
