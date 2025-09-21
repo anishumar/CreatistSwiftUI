@@ -152,6 +152,8 @@ struct SignupView: View {
                                 errorMessage = nil
                             }
                         }
+                    } else {
+                        Button("Cancel") { dismiss() }
                     }
                 }
             }
