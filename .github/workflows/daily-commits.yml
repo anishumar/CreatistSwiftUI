@@ -3,7 +3,7 @@ name: Daily Commit Summary
 on:
   schedule:
     # runs at 00:30 IST every day -> cron uses UTC; 00:30 IST is 19:00 (previous day) UTC
-    # below runs at 19:00 UTC which equals 00:30 Asia/Kolkata next day
+    # below runs at 19:00 UTC which equals 01:00 Asia/Kolkata next day
     - cron: '30 19 * * *'
   workflow_dispatch:   # allows manual run for testing
 
@@ -52,3 +52,4 @@ jobs:
           from: GitHub Actions <${{ secrets.EMAIL_USER }}>
           secure: true
           body: file://summary.txt
+
