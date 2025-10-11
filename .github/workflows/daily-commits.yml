@@ -4,7 +4,7 @@ on:
   schedule:
     # runs at 00:30 IST every day -> cron uses UTC; 00:30 IST is 19:00 (previous day) UTC
     # below runs at 19:00 UTC which equals 00:30 Asia/Kolkata next day
-    - cron: '19 0 * * *'
+    - cron: '30 19 * * *'
   workflow_dispatch:   # allows manual run for testing
 
 env:
@@ -44,10 +44,11 @@ jobs:
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
-          server_port: 465
+          server_port: 587
           username: ${{ secrets.EMAIL_USER }}
           password: ${{ secrets.EMAIL_PASS }}
           subject: "Daily Git Commits — ${{ env.TZ }} summary"
-          to: anishumar786@gmail.com
+          to: creatist.swift@gmail.com
           from: GitHub Actions <${{ secrets.EMAIL_USER }}>
+          secure: true
           body: file://summary.txt
