@@ -45,5 +45,7 @@ jobs:
           subject: "Daily Git Commits — ${{ env.TZ }} summary"
           to: creatist.swift@gmail.com
           from: GitHub Actions <${{ secrets.EMAIL_USER }}>
-          secure: true
+          secure: false
           body: file://summary.txt
+          
+
