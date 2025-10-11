@@ -3,7 +3,8 @@ name: Daily Commit Summary
 on:
   schedule:
     # runs at 00:30 IST every day -> cron uses UTC; 00:30 IST is 19:00 (previous day) UTC
-    - cron: '30 19 * * *'
+    # below runs at 19:00 UTC which equals 00:30 Asia/Kolkata next day
+    - cron: '19 0 * * *'
   workflow_dispatch:   # allows manual run for testing
 
 env:
@@ -16,13 +17,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # get full history so git log works correctly
 
       - name: Build today's commit list
         id: commits
         run: |
+          # use Asia/Kolkata timezone so "today" == user's local day
           TODAY=$(TZ="Asia/Kolkata" date +%F)
           echo "Generating commits for $TODAY"
+          # produce nicely formatted list for all branches (committed to repo)
+          # you can narrow to a branch by adding --branches=main if needed
           COMMITS=$(git --no-pager log --since="$TODAY 00:00:00" --until="$TODAY 23:59:59" --pretty=format:"%h | %an | %ad | %s" --date=iso)
           if [ -z "$COMMITS" ]; then
             echo "No commits found for $TODAY" > summary.txt
@@ -30,6 +34,7 @@ jobs:
             printf "Commits for %s\n\n" "$TODAY" > summary.txt
             printf "%s\n" "$COMMITS" >> summary.txt
           fi
+          # show file so logs have the content for debugging
           echo "----- summary.txt -----"
           cat summary.txt
           echo "----- end -----"
@@ -39,13 +44,10 @@ jobs:
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
-          server_port: 587
+          server_port: 465
           username: ${{ secrets.EMAIL_USER }}
           password: ${{ secrets.EMAIL_PASS }}
           subject: "Daily Git Commits — ${{ env.TZ }} summary"
           to: creatist.swift@gmail.com
           from: GitHub Actions <${{ secrets.EMAIL_USER }}>
-          secure: false
           body: file://summary.txt
-          
-
