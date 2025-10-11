@@ -2,9 +2,8 @@ name: Daily Commit Summary
 
 on:
   schedule:
-    # runs at 00:30 IST every day -> cron uses UTC; 00:30 IST is 19:00 (previous day) UTC
-    # below runs at 19:00 UTC which equals 00:30 Asia/Kolkata next day
-    - cron: '19 0 * * *'
+    # Runs daily at 00:30 IST (19:00 UTC previous day)
+    - cron: '30 19 * * *'
   workflow_dispatch:   # allows manual run for testing
 
 env:
@@ -13,28 +12,32 @@ env:
 jobs:
   email_commits:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # get full history so git log works correctly
+          fetch-depth: 0   # fetch full history so git log works
 
       - name: Build today's commit list
         id: commits
         run: |
-          # use Asia/Kolkata timezone so "today" == user's local day
+          # Get today's date in Asia/Kolkata timezone
           TODAY=$(TZ="Asia/Kolkata" date +%F)
           echo "Generating commits for $TODAY"
-          # produce nicely formatted list for all branches (committed to repo)
-          # you can narrow to a branch by adding --branches=main if needed
+
+          # Get commits for today across all branches
           COMMITS=$(git --no-pager log --since="$TODAY 00:00:00" --until="$TODAY 23:59:59" --pretty=format:"%h | %an | %ad | %s" --date=iso)
+
+          # Create summary.txt
           if [ -z "$COMMITS" ]; then
             echo "No commits found for $TODAY" > summary.txt
           else
             printf "Commits for %s\n\n" "$TODAY" > summary.txt
             printf "%s\n" "$COMMITS" >> summary.txt
           fi
-          # show file so logs have the content for debugging
+
+          # Print summary for logs/debugging
           echo "----- summary.txt -----"
           cat summary.txt
           echo "----- end -----"
@@ -50,4 +53,5 @@ jobs:
           subject: "Daily Git Commits — ${{ env.TZ }} summary"
           to: creatist.swift@gmail.com
           from: GitHub Actions <${{ secrets.EMAIL_USER }}>
+          secure: true
           body: file://summary.txt
