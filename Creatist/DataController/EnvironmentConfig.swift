@@ -88,6 +88,25 @@ class EnvironmentConfig {
         return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk"
     }
     
+    // Google OAuth Client ID for iOS
+    // TODO: Replace with your actual Google OAuth Client ID from Google Cloud Console
+    // Option 1: Set directly here (for quick setup)
+    // Option 2: Set via Secrets.xcconfig and Build Settings (recommended for production)
+    var googleClientID: String {
+        // Method 1: Try to read from build configuration (Secrets.xcconfig)
+        if let clientID = Bundle.main.object(forInfoDictionaryKey: "GOOGLE_CLIENT_ID") as? String, !clientID.isEmpty {
+            return clientID
+        }
+        
+        // Method 2: Try environment variable
+        if let clientID = ProcessInfo.processInfo.environment["GOOGLE_CLIENT_ID"], !clientID.isEmpty {
+            return clientID
+        }
+        
+        // Method 3: Direct assignment (configured with your Client ID)
+        return "408248869256-5mlgsuu1uhaju2q7km2lfvufttmo3c2r.apps.googleusercontent.com"
+    }
+    
     // Helper method to get WebSocket URL for specific endpoints
     func wsURL(for endpoint: String) -> String {
         return "\(wsBaseURL)\(endpoint)"

@@ -111,6 +111,27 @@ struct SignupView: View {
                 .disabled(isLoading)
                 .padding(.top, 8)
                 
+                // Google Sign-Up Button (only show on initial signup screen)
+                if !isSignupComplete {
+                    Button(action: signUpWithGoogle) {
+                        HStack(spacing: 12) {
+                            Image("Google")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                            Text("Sign up with Google")
+                                .fontWeight(.medium)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(red: 0.21, green: 0.21, blue: 0.21)) // Dark gray #363636
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+                    .disabled(isLoading)
+                    .padding(.top, 8)
+                }
+                
                 Spacer()
             }
             .padding()
@@ -182,6 +203,38 @@ struct SignupView: View {
                     dismiss() // On successful OTP verification, dismiss signup
                 case .failure(let error):
                     errorMessage = error
+                }
+            }
+        }
+    }
+    
+    func signUpWithGoogle() {
+        errorMessage = nil
+        isLoading = true
+        
+        Task {
+            do {
+                // Get Google ID token
+                let idToken = try await GoogleAuthHelper.shared.signIn()
+                
+                // Authenticate with backend (unified endpoint handles both sign-in and sign-up)
+                let result = await Creatist.shared.googleAuth(idToken: idToken)
+                
+                await MainActor.run {
+                    isLoading = false
+                    switch result {
+                    case .success:
+                        dismiss() // Sign up successful, dismiss the view
+                    case .failure(let error):
+                        errorMessage = error
+                    case .requiresVerification:
+                        errorMessage = "Verification required"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    errorMessage = "Google sign-up failed: \(error.localizedDescription)"
                 }
             }
         }

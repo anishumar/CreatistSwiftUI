@@ -184,6 +184,11 @@ struct LoginResponse: Codable {
     let refresh_token: String?
     let token_type: String?
     let expires_in: Int?
+    let is_new_user: Bool?
+}
+
+struct GoogleAuthRequest: Codable {
+    let id_token: String
 }
 
 struct SignupResponse: Codable {

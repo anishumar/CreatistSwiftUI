@@ -83,6 +83,53 @@ class Creatist {
         }
     }
     
+    /// Google authentication - unified sign-in/sign-up
+    /// This single API call handles both new user registration and existing user login
+    func googleAuth(idToken: String) async -> LoginResult {
+        let googleAuthRequest = GoogleAuthRequest(id_token: idToken)
+        guard let data = try? JSONEncoder().encode(googleAuthRequest) else {
+            return .failure("Invalid Google token")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(
+            url: "/auth/google",
+            method: .POST,
+            body: data
+        )
+        
+        guard let data = responseData else {
+            return .failure("Google authentication failed")
+        }
+        
+        do {
+            let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
+            
+            if loginResponse.message == "success",
+               let accessToken = loginResponse.access_token,
+               let refreshToken = loginResponse.refresh_token {
+                // Store tokens in Keychain (minimal storage - no Google tokens stored)
+                KeychainHelper.set(accessToken, forKey: "accessToken")
+                KeychainHelper.set(refreshToken, forKey: "refreshToken")
+                
+                // Store token expiration
+                if let expiresIn = loginResponse.expires_in {
+                    let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
+                    KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
+                }
+                
+                // Fetch user data
+                await self.fetch()
+                
+                return .success
+            } else {
+                return .failure(loginResponse.message)
+            }
+        } catch {
+            print("Google auth decode error: \(error)")
+            return .failure("Google authentication failed")
+        }
+    }
+    
     func signup(_ user: User) async -> SignupResult {
         guard let data = user.toData() else {
             return .failure("Invalid user data")
