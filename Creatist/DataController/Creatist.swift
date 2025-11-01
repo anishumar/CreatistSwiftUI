@@ -130,6 +130,161 @@ class Creatist {
         }
     }
     
+    /// Send phone OTP for verification (profile updates)
+    func requestPhoneVerifyOTP(phoneNumber: String) async -> (Bool, String?) {
+        let phoneOTPRequest = PhoneOTPRequest(phone_number: phoneNumber, otp: nil, temp_id: nil)
+        guard let data = try? JSONEncoder().encode(phoneOTPRequest) else {
+            return (false, "Invalid phone number data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(
+            url: "/auth/otp/phone/verify",
+            method: .POST,
+            body: data
+        )
+        
+        guard let data = responseData else {
+            return (false, "Failed to send OTP. Please check your connection and try again.")
+        }
+        
+        if statusCode == 200 {
+            return (true, nil)
+        } else {
+            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorData["message"] as? String {
+                return (false, message)
+            }
+            return (false, "Failed to send OTP. Please check your phone number and try again.")
+        }
+    }
+    
+    /// Send phone OTP (login only - user must exist)
+    func requestPhoneOTP(phoneNumber: String) async -> (Bool, String?) {
+        let phoneOTPRequest = PhoneOTPRequest(phone_number: phoneNumber, otp: nil, temp_id: nil)
+        guard let data = try? JSONEncoder().encode(phoneOTPRequest) else {
+            return (false, "Invalid phone number data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(
+            url: "/auth/otp/phone",
+            method: .POST,
+            body: data
+        )
+        
+        guard let data = responseData else {
+            return (false, "Failed to send OTP. Please check your connection and try again.")
+        }
+        
+        // Parse response to get error message if any
+        if statusCode == 200 {
+            // Store phone number for OTP verification
+            KeychainHelper.set(phoneNumber, forKey: "phoneNumber")
+            return (true, nil)
+        } else {
+            // Try to parse error message
+            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorData["message"] as? String {
+                return (false, message)
+            }
+            return (false, "Failed to send OTP. Please check your phone number and try again.")
+        }
+    }
+    
+    /// Verify phone number OTP and update profile
+    func verifyPhoneUpdate(phoneNumber: String, otp: String) async -> (Bool, String?) {
+        guard let token = KeychainHelper.get("accessToken"),
+              let url = URL(string: NetworkManager.baseURL + "/v1/users/verify-phone") else {
+            return (false, "Invalid configuration")
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let body: [String: Any] = [
+            "phone_number": phoneNumber,
+            "otp": otp
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
+            return (false, "Invalid data")
+        }
+        request.httpBody = jsonData
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return (false, "Invalid response from server")
+            }
+            
+            if httpResponse.statusCode == 200 {
+                return (true, nil)
+            } else {
+                var errorMessage: String? = nil
+                if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = errorData["message"] as? String {
+                    errorMessage = message
+                } else {
+                    errorMessage = "Failed to verify phone number"
+                }
+                return (false, errorMessage)
+            }
+        } catch {
+            return (false, "Network error: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Phone authentication - sign-in only
+    /// User must already exist in the database with this phone number
+    func phoneAuth(phoneNumber: String, otp: String) async -> LoginResult {
+        let phoneAuthRequest = PhoneAuthRequest(phone_number: phoneNumber, otp: otp)
+        guard let data = try? JSONEncoder().encode(phoneAuthRequest) else {
+            return .failure("Invalid phone auth data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(
+            url: "/auth/phone",
+            method: .POST,
+            body: data
+        )
+        
+        guard let data = responseData else {
+            return .failure("Phone authentication failed")
+        }
+        
+        do {
+            let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
+            
+            if loginResponse.message == "success",
+               let accessToken = loginResponse.access_token,
+               let refreshToken = loginResponse.refresh_token {
+                // Store tokens in Keychain (minimal storage)
+                KeychainHelper.set(accessToken, forKey: "accessToken")
+                KeychainHelper.set(refreshToken, forKey: "refreshToken")
+                
+                // Store token expiration
+                if let expiresIn = loginResponse.expires_in {
+                    let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
+                    KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
+                }
+                
+                // Clear phone number from keychain after successful auth
+                KeychainHelper.remove("phoneNumber")
+                
+                // Fetch user data
+                await self.fetch()
+                
+                return .success
+            } else {
+                return .failure(loginResponse.message)
+            }
+        } catch {
+            print("Phone auth decode error: \(error)")
+            return .failure("Phone authentication failed")
+        }
+    }
+    
     func signup(_ user: User) async -> SignupResult {
         guard let data = user.toData() else {
             return .failure("Invalid user data")
@@ -684,9 +839,10 @@ class Creatist {
     }
 
     // Update user profile via PATCH /v1/users
-    func updateUserProfile(_ user: User) async -> Bool {
+    // Returns (success: Bool, errorMessage: String?)
+    func updateUserProfile(_ user: User) async -> (Bool, String?) {
         guard let token = KeychainHelper.get("accessToken"),
-              let url = URL(string: NetworkManager.baseURL + "/v1/users") else { return false }
+              let url = URL(string: NetworkManager.baseURL + "/v1/users") else { return (false, "Invalid configuration") }
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -696,6 +852,7 @@ class Creatist {
             "name": user.name,
             "username": user.username,
             "description": user.description,
+            "phone_number": user.phoneNumber,
             "age": user.age,
             "dob": user.dob,
             "genres": user.genres?.map { $0.rawValue },
@@ -704,20 +861,35 @@ class Creatist {
             "profile_image_url": user.profileImageUrl
         ]
         let filteredBody = body.compactMapValues { $0 }
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: filteredBody) else { return false }
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: filteredBody) else { return (false, "Invalid data") }
         request.httpBody = jsonData
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("Failed to update user: \(String(data: data, encoding: .utf8) ?? "nil")")
-                return false
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("Failed to update user: Invalid response")
+                return (false, "Invalid response from server")
             }
-            // Optionally update Creatist.shared.user with the new data here
-            return true
+            
+            if httpResponse.statusCode == 200 {
+                // Optionally update Creatist.shared.user with the new data here
+                return (true, nil)
+            } else {
+                // Try to parse error message
+                var errorMessage: String? = nil
+                if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = errorData["message"] as? String {
+                    errorMessage = message
+                    print("Failed to update user: \(message)")
+                } else {
+                    errorMessage = "Failed to update profile"
+                    print("Failed to update user: \(String(data: data, encoding: .utf8) ?? "nil")")
+                }
+                return (false, errorMessage)
+            }
         } catch {
             print("Error updating user: \(error)")
-            return false
+            return (false, "Network error: \(error.localizedDescription)")
         }
     }
 

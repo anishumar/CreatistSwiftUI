@@ -120,6 +120,7 @@ struct User: Codable, Sendable {
     var name: String
     var username: String?
     var email: String
+    var phoneNumber: String?
     var password: String
     var profileImageUrl: String?
     var age: Int?
@@ -140,6 +141,7 @@ struct User: Codable, Sendable {
         case name
         case username
         case email
+        case phoneNumber = "phone_number"
         case password
         case profileImageUrl = "profile_image_url"
         case age
@@ -189,6 +191,22 @@ struct LoginResponse: Codable {
 
 struct GoogleAuthRequest: Codable {
     let id_token: String
+}
+
+struct PhoneAuthRequest: Codable {
+    let phone_number: String
+    let otp: String
+}
+
+struct PhoneOTPRequest: Codable {
+    let phone_number: String
+    let otp: String?
+    let temp_id: String?
+}
+
+struct PhoneOTPResponse: Codable {
+    let message: String
+    let phone_number: String?
 }
 
 struct SignupResponse: Codable {

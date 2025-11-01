@@ -5,6 +5,9 @@ struct SignupView: View {
     @State private var firstName: String = ""
     @State private var lastName: String = ""
     @State private var email: String = ""
+    @State private var phoneNumber: String = ""
+    @State private var selectedCountryCode: CountryCode = CountryCode.getDefault()
+    @State private var showCountryCodePicker: Bool = false
     @State private var password: String = ""
     @State private var confirmPassword: String = ""
     @State private var isLoading: Bool = false
@@ -39,6 +42,33 @@ struct SignupView: View {
                         .padding()
                         .background(Color(.secondarySystemBackground))
                         .cornerRadius(8)
+                    HStack(spacing: 8) {
+                        // Country Code Picker Button
+                        Button(action: {
+                            showCountryCodePicker = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Text(selectedCountryCode.flag)
+                                Text(selectedCountryCode.code)
+                                    .foregroundColor(.primary)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 12)
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(8)
+                        }
+                        
+                        // Phone Number Input
+                        TextField("Phone Number (optional)", text: $phoneNumber)
+                            .keyboardType(.phonePad)
+                            .textContentType(.telephoneNumber)
+                            .padding()
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(8)
+                    }
                     SecureField("Password", text: $password)
                         .textContentType(.newPassword)
                         .padding()
@@ -136,6 +166,9 @@ struct SignupView: View {
             }
             .padding()
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showCountryCodePicker) {
+                CountryCodePickerView(selectedCountryCode: $selectedCountryCode)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     if isSignupComplete {
@@ -157,7 +190,7 @@ struct SignupView: View {
     func signup() {
         errorMessage = nil
         guard !firstName.isEmpty, !lastName.isEmpty, !email.isEmpty, !password.isEmpty, !confirmPassword.isEmpty else {
-            errorMessage = "Please fill in all fields."
+            errorMessage = "Please fill in all required fields."
             return
         }
         guard password == confirmPassword else {
@@ -166,7 +199,25 @@ struct SignupView: View {
         }
         isLoading = true
         Task {
-            let user = User(id: UUID(), name: firstName + " " + lastName, email: email, password: password)
+            var phone: String? = nil
+            if !phoneNumber.isEmpty {
+                // Format phone number with selected country code
+                var formattedPhone = phoneNumber.trimmingCharacters(in: .whitespaces)
+                if formattedPhone.hasPrefix("+") {
+                    // User may have typed country code, check if it matches selected
+                    if !formattedPhone.hasPrefix(selectedCountryCode.code) {
+                        // Different country code, use what user typed
+                        formattedPhone = formattedPhone
+                    }
+                } else {
+                    // Add selected country code
+                    formattedPhone = selectedCountryCode.code + formattedPhone
+                }
+                phone = formattedPhone
+            }
+            
+            var user = User(id: UUID(), name: firstName + " " + lastName, email: email, password: password)
+            user.phoneNumber = phone
             let result = await Creatist.shared.signup(user)
             await MainActor.run {
                 isLoading = false

@@ -19,6 +19,11 @@ struct LoginView: View {
     @State private var navigationPath: [String] = []
     @State private var showSignupModal: Bool = false
     @State private var showEmailLogin: Bool = false  // Track if email login is selected
+    @State private var showPhoneLogin: Bool = false  // Track if phone login is selected
+    @State private var phoneNumber: String = ""
+    @State private var selectedCountryCode: CountryCode = CountryCode.getDefault()
+    @State private var showCountryCodePicker: Bool = false
+    @State private var showPhoneOTPSheet: Bool = false  // Control OTP sheet visibility
     @FocusState private var focusedField: Field?
     
     enum Field {
@@ -32,8 +37,8 @@ struct LoginView: View {
                 ScrollView {
                     VStack(spacing: 20) {
                     
-                    // Initial view: Show email and Google options
-                    if !showEmailLogin {
+                    // Initial view: Show email, phone, and Google options
+                    if !showEmailLogin && !showPhoneLogin {
                         // Continue with Email Button
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.3)) {
@@ -43,6 +48,24 @@ struct LoginView: View {
                             HStack {
                                 Image(systemName: "envelope.fill")
                                 Text("Continue with Email")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.accentColor)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                        }
+                        .disabled(isLoading)
+                        
+                        // Continue with Phone Button
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showPhoneLogin = true
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "phone.fill")
+                                Text("Continue with Phone")
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -69,6 +92,63 @@ struct LoginView: View {
                             .cornerRadius(8)
                         }
                         .disabled(isLoading)
+                    } else if showPhoneLogin {
+                        // Phone login form
+                        Text("Enter your phone number")
+                            .font(.headline)
+                            .padding(.bottom, 8)
+                        
+                        HStack(spacing: 8) {
+                            // Country Code Picker Button
+                            Button(action: {
+                                showCountryCodePicker = true
+                            }) {
+                                HStack(spacing: 4) {
+                                    Text(selectedCountryCode.flag)
+                                    Text(selectedCountryCode.code)
+                                        .foregroundColor(.primary)
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 12)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                            }
+                            
+                            // Phone Number Input
+                            TextField("Phone number", text: $phoneNumber)
+                                .keyboardType(.phonePad)
+                                .textContentType(.telephoneNumber)
+                                .padding()
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                                .focused($focusedField, equals: .email)
+                                .foregroundColor(.primary)
+                                .accentColor(.accentColor)
+                        }
+                        
+                        if let errorMessage = errorMessage {
+                            Text(errorMessage)
+                                .foregroundColor(.red)
+                                .font(.subheadline)
+                        }
+                        
+                        Button(action: sendPhoneOTP) {
+                            if isLoading {
+                                ProgressView()
+                            } else {
+                                Text("Send OTP")
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.accentColor)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(8)
+                            }
+                        }
+                        .disabled(isLoading || phoneNumber.isEmpty)
+                        .padding(.top, 8)
                     } else {
                         // Email login form (shown after clicking "Continue with Email")
                         TextField("Email", text: $email)
@@ -184,13 +264,15 @@ struct LoginView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if showEmailLogin {
+                if showEmailLogin || showPhoneLogin {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 showEmailLogin = false
+                                showPhoneLogin = false
                                 email = ""
                                 password = ""
+                                phoneNumber = ""
                                 errorMessage = nil
                                 hideKeyboard()
                             }
@@ -202,6 +284,18 @@ struct LoginView: View {
                             .foregroundColor(.primary)
                         }
                     }
+                }
+            }
+            .sheet(isPresented: $showCountryCodePicker) {
+                CountryCodePickerView(selectedCountryCode: $selectedCountryCode)
+            }
+            .sheet(isPresented: $showPhoneOTPSheet) {
+                PhoneOTPView(phoneNumber: phoneNumber) {
+                    showPhoneOTPSheet = false
+                    showPhoneLogin = false
+                    phoneNumber = ""
+                    isLoggedIn = true
+                    TokenMonitor.shared.startMonitoring()
                 }
             }
             .onTapGesture {
@@ -293,6 +387,46 @@ struct LoginView: View {
                 await MainActor.run {
                     isLoading = false
                     errorMessage = "Google sign-in failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    func sendPhoneOTP() {
+        errorMessage = nil
+        guard !phoneNumber.isEmpty else {
+            errorMessage = "Please enter your phone number"
+            return
+        }
+        
+        // Format phone number with selected country code
+        var formattedPhone = phoneNumber.trimmingCharacters(in: .whitespaces)
+        
+        // If phone already has a country code, validate and use it
+        if formattedPhone.hasPrefix("+") {
+            // Check if it's a valid phone number (all digits after +)
+            let withoutPlus = String(formattedPhone.dropFirst())
+            if !withoutPlus.allSatisfy({ $0.isNumber }) {
+                // Invalid format, use selected country code instead
+                formattedPhone = selectedCountryCode.code + withoutPlus
+            }
+            // If valid and already has country code, keep it as is
+        } else {
+            // Add selected country code
+            formattedPhone = selectedCountryCode.code + formattedPhone
+        }
+        
+        isLoading = true
+        Task {
+            let (success, errorMsg) = await Creatist.shared.requestPhoneOTP(phoneNumber: formattedPhone)
+            await MainActor.run {
+                isLoading = false
+                if success {
+                    errorMessage = nil
+                    phoneNumber = formattedPhone  // Store formatted phone number
+                    showPhoneOTPSheet = true  // Show OTP input sheet
+                } else {
+                    errorMessage = errorMsg ?? "Failed to send OTP. Please check your phone number and try again."
                 }
             }
         }
