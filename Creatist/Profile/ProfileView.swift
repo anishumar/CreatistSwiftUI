@@ -511,7 +511,7 @@ extension ProfileView {
     
     private var backgroundView: some View {
         LinearGradient(
-            gradient: Gradient(colors: [Color.accentColor.opacity(0.85), Color.clear]),
+            gradient: Gradient(colors: [Color.accentColor.opacity(0.85), Color.accentColor.opacity(0.3)]),
             startPoint: .bottom,
             endPoint: .top
         )
