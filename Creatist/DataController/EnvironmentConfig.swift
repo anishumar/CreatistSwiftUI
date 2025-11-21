@@ -10,9 +10,9 @@ enum AppEnvironment: String, CaseIterable {
         case .development:
             return "http://localhost:8080"
         case .staging:
-            return "https://web-production-5d44.up.railway.app"
+            return "http://3.110.162.229:8080"
         case .production:
-            return "https://web-production-5d44.up.railway.app"
+            return "http://3.110.162.229:8080"
         }
     }
     
@@ -21,9 +21,9 @@ enum AppEnvironment: String, CaseIterable {
         case .development:
             return "ws://localhost:8080"
         case .staging:
-            return "wss://web-production-5d44.up.railway.app"
+            return "ws://3.110.162.229:8080"
         case .production:
-            return "wss://web-production-5d44.up.railway.app"
+            return "ws://3.110.162.229:8080"
         }
     }
 }
