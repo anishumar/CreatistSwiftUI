@@ -17,6 +17,8 @@
 	</array>
 	<key>GOOGLE_CLIENT_ID</key>
 	<string>408248869256-5mlgsuu1uhaju2q7km2lfvufttmo3c2r.apps.googleusercontent.com</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>
