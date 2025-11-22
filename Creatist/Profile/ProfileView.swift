@@ -24,6 +24,8 @@ struct ProfileView: View {
     @State private var selectedPost: PostWithDetails? = nil
     @State private var showSettingsSheet = false
     @State private var userCache: [UUID: User] = [:]
+    @State private var showFollowersSheet = false
+    @State private var showFollowingSheet = false
 
     var body: some View {
         NavigationStack {
@@ -93,6 +95,22 @@ struct ProfileView: View {
                     onUpdateLocation: updateLocation,
                     onLogout: { showLogoutAlert = true }
                 )
+            }
+            .sheet(isPresented: $showFollowersSheet) {
+                if let user = currentUser {
+                    FollowersListView(userId: user.id.uuidString)
+                } else {
+                    Text("User not available")
+                        .padding()
+                }
+            }
+            .sheet(isPresented: $showFollowingSheet) {
+                if let user = currentUser {
+                    FollowingListView(userId: user.id.uuidString)
+                } else {
+                    Text("User not available")
+                        .padding()
+                }
             }
         }
         .task {
@@ -564,8 +582,16 @@ extension ProfileView {
     
     private func statsView(user: User) -> some View {
         HStack(spacing: 24) {
-            StatView(number: Double(followersCount), label: "Followers")
-            StatView(number: Double(followingCount), label: "Following")
+            Button(action: { showFollowersSheet = true }) {
+                StatView(number: Double(followersCount), label: "Followers")
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Button(action: { showFollowingSheet = true }) {
+                StatView(number: Double(followingCount), label: "Following")
+            }
+            .buttonStyle(PlainButtonStyle())
+            
             StatView(number: Double(myPosts.count), label: "Projects")
             StatView(number: user.rating ?? 0, label: "Rating", isDouble: true)
         }

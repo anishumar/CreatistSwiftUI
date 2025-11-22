@@ -644,6 +644,16 @@ class Creatist {
         return []
     }
     
+    // Fetch full following list for any user (without genre filter)
+    func fetchFollowingList(for userId: String) async -> [User] {
+        struct FollowingResponse: Codable { let message: String; let following: [User] }
+        let url = "/v1/following/\(userId)"
+        if let response: FollowingResponse = await NetworkManager.shared.get(url: url) {
+            return response.following
+        }
+        return []
+    }
+    
     // Helper to format Date as ISO8601 string
     private func iso8601String(from date: Date) -> String {
         let formatter = ISO8601DateFormatter()
