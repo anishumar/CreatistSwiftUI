@@ -90,6 +90,7 @@ struct VisionBoardCard: View {
     let board: VisionBoard
     let index: Int // <-- Add this parameter
     @State private var assignedUsers: [User] = []
+    @State private var creator: User? = nil
     @State private var isLoadingUsers = true
     @Environment(\.colorScheme) var colorScheme
     @StateObject private var cacheManager = CacheManager.shared
@@ -110,8 +111,34 @@ struct VisionBoardCard: View {
                     .font(.system(size: 20, weight: .semibold)) // Decreased font size
                     .foregroundColor(colorScheme == .dark ? .white : .black)
                 HStack(spacing: 4) {
-                    ForEach(0..<min(assignedUsers.count, 4), id: \.self) { idx in
-                        let user = assignedUsers[idx]
+                    // Show creator first if available
+                    if let creator = creator {
+                        if let imageUrl = creator.profileImageUrl, let url = URL(string: imageUrl) {
+                            CachedAsyncImage(url: url) { image in
+                                AnyView(
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.white)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                )
+                            }
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .resizable()
+                                .foregroundColor(.white.opacity(0.7))
+                                .frame(width: 50, height: 50)
+                                .background(Color.white)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        }
+                    }
+                    // Then show assigned users (excluding creator if already shown)
+                    let usersToShow = assignedUsers.filter { $0.id != creator?.id }
+                    ForEach(0..<min(usersToShow.count, creator == nil ? 4 : 3), id: \.self) { idx in
+                        let user = usersToShow[idx]
                         if let imageUrl = user.profileImageUrl, let url = URL(string: imageUrl) {
                             CachedAsyncImage(url: url) { image in
                                 AnyView(
@@ -156,20 +183,35 @@ struct VisionBoardCard: View {
     }
     
     private func loadAssignedUsers() {
-        // Check cache manager first
+        // Load creator first
+        Task {
+            // Check cache for creator
+            if let cachedCreator = cacheManager.getUser(board.createdBy) {
+                await MainActor.run {
+                    self.creator = cachedCreator
+                }
+            } else {
+                // Fetch creator from network
+                if let fetchedCreator = await Creatist.shared.fetchUserById(userId: board.createdBy) {
+                    await MainActor.run {
+                        cacheManager.cacheUser(fetchedCreator)
+                        self.creator = fetchedCreator
+                    }
+                }
+            }
+        }
+        
+        // Check cache manager first for assigned users
         if let cached = cacheManager.getVisionBoardUsers(board.id) {
-            print("✅ VisionBoardCard: Loading users from cache for board: \(board.name)")
             self.assignedUsers = cached
             self.isLoadingUsers = false
             return
         }
         
-        print("🌐 VisionBoardCard: Fetching users from network for board: \(board.name)")
         Task {
             isLoadingUsers = true
             let users = await Creatist.shared.fetchVisionBoardUsers(visionBoardId: board.id)
             await MainActor.run {
-                print("✅ VisionBoardCard: Fetched \(users.count) users for board: \(board.name)")
                 self.assignedUsers = users
                 self.isLoadingUsers = false
                 // Save to cache manager
