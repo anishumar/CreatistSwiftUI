@@ -56,6 +56,8 @@ class Creatist {
                 }
                 
                 await self.fetch()
+                // Update location on login
+                await LocationManager.shared.updateLocation()
                 return .success
             }
             return .failure("Login failed")
@@ -119,6 +121,8 @@ class Creatist {
                 
                 // Fetch user data
                 await self.fetch()
+                // Update location on login
+                await LocationManager.shared.updateLocation()
                 
                 return .success
             } else {
@@ -274,6 +278,8 @@ class Creatist {
                 
                 // Fetch user data
                 await self.fetch()
+                // Update location on login
+                await LocationManager.shared.updateLocation()
                 
                 return .success
             } else {
