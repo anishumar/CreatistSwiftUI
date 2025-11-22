@@ -44,90 +44,140 @@ struct FeedView: View {
                 } else if let errorMessage = errorMessage {
                     Text(errorMessage).foregroundColor(.red)
                 } else {
-                    if selectedSegment == 0 {
-                        VStack(spacing: 0) {
-                            TrendingCollectionView(
-                                posts: posts, 
-                                onPostSelected: { post in
-                                    selectedPost = post
-                                },
-                                onLoadMore: {
-                                    // Check if we need to load more posts for trending
-                                    if nextCursor != nil, !isLoadingMore {
-                                        loadMorePosts()
-                                    }
-                                }
-                            )
-                            .padding(.horizontal, 12)
-                            NavigationLink(
-                                destination: Group {
-                                    if let post = selectedPost {
-                                        ScrollView {
-                                            VStack(alignment: .leading, spacing: 24) {
-                                                // Selected post detail at the top
-                                                PostCellView(post: post)
-                                                    .padding(.bottom, 16)
-                                                // All trending posts below, with the selected post first, then the rest
-                                                let orderedPosts = [post] + posts.filter { $0.id != post.id }
-                                                ForEach(orderedPosts, id: \.id) { trendingPost in
-                                                    if trendingPost.id != post.id {
-                                                        PostCellView(post: trendingPost)
-                                                            .padding(.vertical, 8)
-                                                    }
-                                                }
-                                            }
-                                            .padding()
+
+                // Feed Content
+                if selectedSegment == 0 {
+                    // Trending Feed (Grid)
+                    if let post = selectedPost {
+                        // Detail View for Selected Post
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                // Selected Post
+                                PostCellView(post: post, onUpdate: handlePostUpdate)
+                                    .padding(.horizontal)
+                                
+                                Divider().padding(.vertical)
+                                
+                                // More posts
+                                LazyVStack(spacing: 20) {
+                                    Text("More Trending")
+                                        .font(.headline)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal)
+                                    
+                                    let orderedPosts = [post] + posts.filter { $0.id != post.id }
+                                    ForEach(orderedPosts, id: \.id) { trendingPost in
+                                        if trendingPost.id != post.id {
+                                            PostCellView(post: trendingPost, onUpdate: handlePostUpdate)
+                                                .padding(.horizontal)
                                         }
-                                    }
-                                },
-                                isActive: Binding(
-                                    get: { selectedPost != nil },
-                                    set: { if !$0 { selectedPost = nil } }
-                                )
-                            ) { EmptyView() }
-                            .hidden()
-                        }
-                        .padding(.top, 8)
-                    } else {
-                        VStack(spacing: 0) {
-                            List {
-                                ForEach(posts, id: \.id) { post in
-                                    PostCellView(post: post)
-                                    .onAppear {
-                                        checkIfShouldLoadMore(post: post)
-                                    }
-                                }
-                                if isLoadingMore {
-                                    HStack { Spacer(); 
-                                        SkeletonView(width: 20, height: 20, cornerRadius: 10)
-                                        Spacer() 
                                     }
                                 }
                             }
-                            .listStyle(PlainListStyle())
-                            .refreshable { await reloadPosts() }
                         }
-                        .padding(.horizontal, 2)
-                        .padding(.top, 8)
+                        .background(Color(.systemBackground))
+                        .transition(.move(edge: .trailing))
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button(action: {
+                                    withAnimation {
+                                        selectedPost = nil
+                                    }
+                                }) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                }
+                            }
+                        }
+                    } else {
+                        // Grid View
+                        TrendingCollectionView(
+                            posts: posts,
+                            onPostSelected: { post in
+                                withAnimation {
+                                    selectedPost = post
+                                }
+                            },
+                            onLoadMore: {
+                                loadMorePosts()
+                            }
+                        )
+                    }
+                } else {
+                    // Following Feed (List)
+                    List {
+                        ForEach(posts, id: \.id) { post in
+                            PostCellView(post: post, onUpdate: handlePostUpdate)
+                                .listRowInsets(EdgeInsets())
+                                .listRowSeparator(.hidden)
+                        }
+                        
+                        if isLoadingMore {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .listRowSeparator(.hidden)
+                        } else {
+                            Color.clear
+                                .frame(height: 1)
+                                .onAppear {
+                                    loadMorePosts()
+                                }
+                        }
+                    }
+                    .listStyle(PlainListStyle())
+                    .refreshable {
+                        await refreshFeed()
                     }
                 }
-            }
-            .onAppear { Task { await reloadPosts() } }
-            .onChange(of: selectedSegment) { _ in Task { await reloadPosts() } }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showChatList = true }) {
-                        Image(systemName: "message")
-                    }
-                }
-            }
-            .navigationDestination(isPresented: $showChatList) {
-                ChatListView()
             }
         }
     }
+    .navigationTitle(selectedPost == nil ? "Feed" : "Post")
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+        if selectedPost == nil {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink(destination: ChatListView()) {
+                    Image(systemName: "message")
+                        .foregroundColor(.primary)
+                }
+            }
+        }
+    }
+    .onAppear {
+        if posts.isEmpty {
+            Task {
+                await refreshFeed()
+            }
+        }
+    }
+    .onChange(of: selectedSegment) { _ in Task { await refreshFeed() } }
+}
+    
+    private func handlePostUpdate(_ updatedPost: PostWithDetails) {
+        print("🔄 handlePostUpdate called for post: \(updatedPost.id)")
+        print("   Updated comment count: \(updatedPost.commentCount)")
+        print("   Updated like count: \(updatedPost.likeCount)")
+        
+        // Update posts array
+        if let index = posts.firstIndex(where: { $0.id == updatedPost.id }) {
+            print("   Found post at index \(index), updating...")
+            print("   Old comment count: \(posts[index].commentCount)")
+            posts[index] = updatedPost
+            print("   New comment count: \(posts[index].commentCount)")
+        } else {
+            print("   ⚠️ Post not found in posts array!")
+        }
+        
+        // Update selectedPost if it matches
+        if selectedPost?.id == updatedPost.id {
+            print("   Updating selectedPost as well")
+            selectedPost = updatedPost
+        }
+    }
 
-    func reloadPosts() async {
+    func refreshFeed() async {
         isLoading = true
         isLoadingMore = false
         errorMessage = nil
@@ -188,6 +238,7 @@ struct FeedView: View {
 
 struct PostCellView: View {
     let post: PostWithDetails
+    var onUpdate: ((PostWithDetails) -> Void)? = nil
     @StateObject private var cacheManager = CacheManager.shared
     @State private var author: User? = nil
     @State private var collaborators: [User] = []
@@ -199,6 +250,9 @@ struct PostCellView: View {
     @State private var isLoadingComments: Bool = false
     @State private var isAddingComment: Bool = false
     @State private var showShareSheet = false
+    @State private var isLoadingMoreComments = false
+    @State private var hasMoreComments = true
+    @State private var commentsCursor: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -293,12 +347,18 @@ struct PostCellView: View {
                             if success {
                                 isLiked = false
                                 likeCount = max(0, likeCount - 1)
+                                // Update parent
+                                let updatedPost = post.copy(likeCount: likeCount)
+                                onUpdate?(updatedPost)
                             }
                         } else {
                             let success = await Creatist.shared.likePost(postId: post.id)
                             if success {
                                 isLiked = true
                                 likeCount += 1
+                                // Update parent
+                                let updatedPost = post.copy(likeCount: likeCount)
+                                onUpdate?(updatedPost)
                             }
                         }
                     }
@@ -307,10 +367,12 @@ struct PostCellView: View {
                         .foregroundColor(isLiked ? .red : .primary)
                 }
                 Button(action: { showComments = true }) {
-                    Label("\(comments.count > 0 ? comments.count : post.commentCount)", systemImage: "bubble.right")
+                    Label("\(post.commentCount)", systemImage: "bubble.right")
+                        .foregroundColor(.primary)
                 }
                 Button(action: { showShareSheet = true }) {
                     Image(systemName: "square.and.arrow.up")
+                        .foregroundColor(.primary)
                 }
             }.font(.subheadline)
             // 4. Title
@@ -365,35 +427,139 @@ struct PostCellView: View {
             }
             // Initialize like state
             likeCount = post.likeCount
+            // Check if we have comments loaded in cache or if we need to trust the post count
+            // We don't auto-load comments here to save bandwidth, but we respect the post.commentCount
         }
         .sheet(isPresented: $showComments) {
             NavigationView {
-                VStack {
+                VStack(spacing: 0) {
                     if isLoadingComments {
-                        ProgressView("Loading comments...")
+                        VStack {
+                            Spacer()
+                            ProgressView("Loading comments...")
+                                .padding()
+                            Spacer()
+                        }
+                    } else if comments.isEmpty && !hasMoreComments { // Only show "No comments" if we've loaded all and there are none
+                        VStack(spacing: 12) {
+                            Spacer()
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.system(size: 48))
+                                .foregroundColor(.secondary)
+                            Text("No comments yet")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            Text("Be the first to comment")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding()
                     } else {
-                        List(comments, id: \.id) { comment in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(comment.content).font(.body)
-                                Text(comment.createdAt, style: .relative).font(.caption).foregroundColor(.gray)
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 16) {
+                                ForEach(comments, id: \.id) { comment in
+                                    CommentRowView(comment: comment, cacheManager: cacheManager)
+                                }
+
+                                if hasMoreComments {
+                                    if isLoadingMoreComments {
+                                        ProgressView()
+                                            .frame(maxWidth: .infinity)
+                                            .padding()
+                                    } else {
+                                        Button(action: {
+                                            loadMoreComments()
+                                        }) {
+                                            Text("Load more comments")
+                                                .font(.subheadline)
+                                                .foregroundColor(.accentColor)
+                                                .frame(maxWidth: .infinity)
+                                                .padding()
+                                        }
+                                    }
+                                }
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
                         }
                     }
-                    HStack {
-                        TextField("Add a comment...", text: $newComment)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                        Button("Send") {
+                    
+                    // Comment input section
+                    Divider()
+                    HStack(spacing: 12) {
+                        // Current user's profile picture
+                        if let currentUser = cacheManager.currentUser, 
+                           let profileUrl = currentUser.profileImageUrl,
+                           let url = URL(string: profileUrl) {
+                            AsyncImage(url: url) { phase in
+                                if let image = phase.image {
+                                    image.resizable().scaledToFill()
+                                } else {
+                                    Image(systemName: "person.crop.circle.fill")
+                                        .resizable()
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .frame(width: 32, height: 32)
+                            .clipShape(Circle())
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .resizable()
+                                .frame(width: 32, height: 32)
+                                .foregroundColor(.gray)
+                        }
+                        
+                        TextField("Add a comment...", text: $newComment, axis: .vertical)
+                            .lineLimit(1...4)
+                            .textFieldStyle(.plain)
+                            .padding(8)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(16)
+                        
+                        Button(action: {
                             guard !newComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                            print("💬 Adding comment to post: \(post.id)")
+                            print("   Comment text: \(newComment)")
                             isAddingComment = true
                             Task {
                                 if let added = await Creatist.shared.addComment(postId: post.id, content: newComment) {
-                                    comments.insert(added, at: 0)
-                                    newComment = ""
+                                    print("✅ Comment added successfully: \(added.id)")
+                                    await MainActor.run {
+                                        comments.insert(added, at: 0)
+                                        newComment = ""
+                                        print("   Current comment count in list: \(comments.count)")
+                                        print("   Post comment count before update: \(post.commentCount)")
+                                        
+                                        // Update parent with new comment count
+                                        let newCount = post.commentCount + 1
+                                        print("   New comment count: \(newCount)")
+                                        let updatedPost = post.copy(commentCount: newCount)
+                                        print("   Calling onUpdate with count: \(updatedPost.commentCount)")
+                                        onUpdate?(updatedPost)
+                                    }
+                                } else {
+                                    print("❌ Failed to add comment")
                                 }
-                                isAddingComment = false
+                                await MainActor.run {
+                                    isAddingComment = false
+                                }
                             }
-                        }.disabled(isAddingComment || newComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }.padding()
+                        }) {
+                            if isAddingComment {
+                                ProgressView()
+                                    .frame(width: 24, height: 24)
+                            } else {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(newComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .accentColor)
+                            }
+                        }
+                        .disabled(isAddingComment || newComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color(.systemBackground))
                 }
                 .navigationTitle("Comments")
                 .navigationBarTitleDisplayMode(.inline)
@@ -403,10 +569,11 @@ struct PostCellView: View {
                     }
                 }
                 .onAppear {
-                    isLoadingComments = true
-                    Task {
-                        comments = await Creatist.shared.getComments(postId: post.id)
-                        isLoadingComments = false
+                    if comments.isEmpty { // Only load if comments are not already loaded
+                        isLoadingComments = true
+                        Task {
+                            await loadComments(reset: true)
+                        }
                     }
                 }
             }
@@ -420,6 +587,40 @@ struct PostCellView: View {
         }
     }
     
+    private func loadComments(reset: Bool = false) async {
+        print("📥 loadComments(reset: \(reset)) for post: \(post.id)")
+        if reset {
+            commentsCursor = nil
+            hasMoreComments = true
+            await MainActor.run {
+                comments = []
+            }
+        }
+        
+        // SAFETY: Only load first page since backend doesn't support pagination
+        // Backend returns same 10 comments regardless of offset/cursor
+        print("   Loading first 10 comments only (backend doesn't support pagination)")
+        let fetchedComments = await Creatist.shared.getCommentsWithOffset(postId: post.id, limit: 10, offset: 0)
+        print("   Fetched: \(fetchedComments.count) comments")
+        
+        await MainActor.run {
+            comments = fetchedComments
+            commentsCursor = nil
+            hasMoreComments = false
+            isLoadingComments = false
+            isLoadingMoreComments = false
+            print("✅ Loaded \(comments.count) comments (backend limitation)")
+        }
+    }
+    
+    private func loadMoreComments() {
+        guard !isLoadingMoreComments && hasMoreComments else { return }
+        isLoadingMoreComments = true
+        Task {
+            await loadComments()
+        }
+    }
+
     func fetchUser(_ userId: UUID) {
         print("🔍 Fetching user: \(userId)")
         
@@ -495,6 +696,105 @@ struct ShareSheet: UIViewControllerRepresentable {
         return controller
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// CommentRowView - Instagram-style comment with profile picture
+struct CommentRowView: View {
+    let comment: PostComment
+    @ObservedObject var cacheManager: CacheManager
+    @State private var commentAuthor: User? = nil
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            // User profile picture
+            if let user = commentAuthor {
+                if let profileUrl = user.profileImageUrl, let url = URL(string: profileUrl) {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        } else if phase.error != nil {
+                            Image(systemName: "person.crop.circle.fill")
+                                .resizable()
+                                .scaledToFill()
+                                .foregroundColor(.gray)
+                        } else {
+                            ProgressView()
+                                .frame(width: 32, height: 32)
+                        }
+                    }
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+                    .padding(.top, 4) // Align with text top
+                } else {
+                    Image(systemName: "person.crop.circle.fill")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 32, height: 32)
+                        .foregroundColor(.gray)
+                        .padding(.top, 4) // Align with text top
+                }
+            } else {
+                // Placeholder while loading
+                Circle()
+                    .fill(Color(.systemGray5))
+                    .frame(width: 32, height: 32)
+                    .overlay(
+                        ProgressView()
+                            .scaleEffect(0.7)
+                    )
+                    .padding(.top, 4) // Align with text top
+                    .onAppear {
+                        fetchCommentAuthor()
+                    }
+            }
+            
+            // Comment content
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if let user = commentAuthor {
+                        Text(user.name)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    } else {
+                        Text("Loading...")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Text(comment.createdAt, style: .relative)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Text(comment.content)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private func fetchCommentAuthor() {
+        // Check cache first
+        if let cachedUser = cacheManager.getUser(comment.userId) {
+            commentAuthor = cachedUser
+            return
+        }
+        
+        // Fetch from network if not in cache
+        Task {
+            if let user = await Creatist.shared.fetchUserById(userId: comment.userId) {
+                await MainActor.run {
+                    cacheManager.cacheUser(user)
+                    commentAuthor = user
+                }
+            }
+        }
+    }
 }
 
 // Add ChatListView at the end of the file
@@ -577,5 +877,30 @@ struct ChatListView: View {
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
+    }
+}
+
+extension PostWithDetails {
+    func copy(likeCount: Int? = nil, commentCount: Int? = nil) -> PostWithDetails {
+        return PostWithDetails(
+            id: self.id,
+            userId: self.userId,
+            caption: self.caption,
+            isCollaborative: self.isCollaborative,
+            status: self.status,
+            visibility: self.visibility,
+            sharedFromPostId: self.sharedFromPostId,
+            createdAt: self.createdAt,
+            updatedAt: self.updatedAt,
+            deletedAt: self.deletedAt,
+            media: self.media,
+            tags: self.tags,
+            collaborators: self.collaborators,
+            likeCount: likeCount ?? self.likeCount,
+            commentCount: commentCount ?? self.commentCount,
+            viewCount: self.viewCount,
+            authorName: self.authorName,
+            topComments: self.topComments
+        )
     }
 }

@@ -62,6 +62,12 @@ class CacheManager: ObservableObject {
         }
     }
     
+    // MARK: - User Access
+    @MainActor
+    var currentUser: User? {
+        return Creatist.shared.user
+    }
+
     // MARK: - Public Methods
     
     // MARK: Posts Caching
