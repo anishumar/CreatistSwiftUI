@@ -21,6 +21,14 @@ struct UserProfileView: View {
         viewModel.nearbyUsers.first(where: { $0.id == userId }) ??
         fetchedUser
     }
+    
+    // Helper to update fetchedUser when follow status changes
+    private func updateFetchedUserFollowStatus(_ isFollowing: Bool) {
+        if var user = fetchedUser {
+            user.isFollowing = isFollowing
+            fetchedUser = user
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -290,8 +298,15 @@ extension UserProfileView {
     
     private func actionButtonsView(user: User) -> some View {
         HStack(spacing: 24) {
-            ProfileFollowButton(userId: user.id, viewModel: viewModel)
-                .frame(maxWidth: .infinity)
+            ProfileFollowButton(
+                userId: user.id,
+                viewModel: viewModel,
+                providedUser: user,
+                onFollowStatusChanged: { isFollowing in
+                    updateFetchedUserFollowStatus(isFollowing)
+                }
+            )
+            .frame(maxWidth: .infinity)
             Button(action: { showDirectChat = true }) {
                 Text("Message")
                     .font(.headline.bold())

@@ -4,11 +4,21 @@ import SwiftUI
 struct ProfileFollowButton: View {
     let userId: UUID
     @ObservedObject var viewModel: UserListViewModel
+    var providedUser: User? = nil
+    var onFollowStatusChanged: ((Bool) -> Void)? = nil
     @State private var isLoading = false
+    @State private var localFollowStatus: Bool? = nil
+    
     var user: User? {
+        providedUser ??
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
         viewModel.nearbyUsers.first(where: { $0.id == userId })
     }
+    
+    var isFollowing: Bool {
+        localFollowStatus ?? user?.isFollowing ?? false
+    }
+    
     private var isOwnProfile: Bool {
         user?.id == Creatist.shared.user?.id
     }
@@ -17,7 +27,12 @@ struct ProfileFollowButton: View {
             Button(action: {
                 Task {
                     isLoading = true
+                    let wasFollowing = isFollowing
                     await viewModel.toggleFollow(for: user)
+                    // Update local state immediately
+                    localFollowStatus = !wasFollowing
+                    // Notify parent view of status change
+                    onFollowStatusChanged?(!wasFollowing)
                     isLoading = false
                 }
             }) {
@@ -26,7 +41,7 @@ struct ProfileFollowButton: View {
                         ProgressView()
                             .scaleEffect(0.8)
                     }
-                    Text((user.isFollowing ?? false) ? "Following" : "Follow")
+                    Text(isFollowing ? "Following" : "Follow")
                         .font(.headline.bold())
                 }
                 .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48)
@@ -34,7 +49,7 @@ struct ProfileFollowButton: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 22, style: .continuous)
                             .fill(.ultraThinMaterial)
-                        if !(user.isFollowing ?? false) {
+                        if !isFollowing {
                             RoundedRectangle(cornerRadius: 22, style: .continuous)
                                 .fill(Color.accentColor.opacity(0.28))
                         }
@@ -47,6 +62,12 @@ struct ProfileFollowButton: View {
                 .foregroundColor(.white)
             }
             .disabled(isLoading)
+            .onAppear {
+                // Initialize local state from user
+                if localFollowStatus == nil {
+                    localFollowStatus = user.isFollowing
+                }
+            }
         }
     }
 }

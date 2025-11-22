@@ -16,15 +16,6 @@ class UserListViewModel: ObservableObject {
         self.topRatedUsers = top
         self.nearbyUsers = near
         isLoading = false
-        // Debug print for isFollowing
-        print("Top Rated Users:")
-        for user in self.topRatedUsers {
-            print("\(user.name): isFollowing = \(user.isFollowing ?? false)")
-        }
-        print("Nearby Users:")
-        for user in self.nearbyUsers {
-            print("\(user.name): isFollowing = \(user.isFollowing ?? false)")
-        }
     }
 
     // Toggle follow/unfollow for a user
@@ -39,13 +30,17 @@ class UserListViewModel: ObservableObject {
             success = await Creatist.shared.followUser(userId: userId)
         }
         if success {
-            // Update in topRatedUsers
+            // Update in topRatedUsers - replace entire user object since User is a struct
             if let idx = self.topRatedUsers.firstIndex(where: { $0.id == user.id }) {
-                self.topRatedUsers[idx].isFollowing = !isCurrentlyFollowing
+                var updatedUser = self.topRatedUsers[idx]
+                updatedUser.isFollowing = !isCurrentlyFollowing
+                self.topRatedUsers[idx] = updatedUser
             }
-            // Update in nearbyUsers
+            // Update in nearbyUsers - replace entire user object since User is a struct
             if let idx = self.nearbyUsers.firstIndex(where: { $0.id == user.id }) {
-                self.nearbyUsers[idx].isFollowing = !isCurrentlyFollowing
+                var updatedUser = self.nearbyUsers[idx]
+                updatedUser.isFollowing = !isCurrentlyFollowing
+                self.nearbyUsers[idx] = updatedUser
             }
         }
     }
