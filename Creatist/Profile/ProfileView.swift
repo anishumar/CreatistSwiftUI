@@ -220,15 +220,11 @@ struct ProfileView: View {
             print("[ProfileView] Warning: Refresh endpoint failed, but continuing with data fetch")
         }
         
-        // Step 2: Invalidate caches to force fresh data
-        // This ensures we don't use old cached data
+       
         CacheManager.shared.invalidateUserPostsCache(for: user.id)
         
-        // Step 3: Fetch fresh data from all endpoints
-        // First fetch updated user data (profile picture, etc.)
         await refreshCurrentUser()
         
-        // Get updated user ID after refresh (in case user data changed)
         let updatedUserId = await MainActor.run {
             return Creatist.shared.user?.id.uuidString.lowercased() ?? userId
         }
@@ -282,10 +278,7 @@ struct ProfileView: View {
     }
     
     func refreshCurrentUser() async {
-        print("[ProfileView] Fetching updated user data from: GET /auth/fetch")
-        
-        // Fetch updated user data from the API endpoint
-        // The endpoint returns the current user's updated data
+
         let url = "/auth/fetch"
         
         // Try direct User response first (as per Creatist.fetch() implementation)
@@ -300,8 +293,6 @@ struct ProfileView: View {
                 // Update cache
                 CacheManager.shared.cacheUser(updatedUser)
                 
-                print("[ProfileView] Updated currentUser in Creatist.shared")
-                print("[ProfileView] Profile image changed: \(oldProfileImage ?? "nil") → \(updatedUser.profileImageUrl ?? "nil")")
             }
         } else {
             // Try wrapped response format
@@ -361,10 +352,7 @@ struct ProfileView: View {
     func refreshFollowersCount(userId: String) async {
         print("[ProfileView] Fetching followers count for: \(userId)")
         
-        // Same workflow as posts refresh:
-        // 1. POST /v1/refresh already called
-        // 2. Cache invalidated (if any)
-        // 3. Call API directly to get fresh data
+    
         struct FollowersResponse: Codable { 
             let message: String
             let followers: [User] 
@@ -394,10 +382,7 @@ struct ProfileView: View {
     func refreshFollowingCount(userId: String) async {
         print("[ProfileView] Fetching following count for: \(userId)")
         
-        // Same workflow as posts refresh:
-        // 1. POST /v1/refresh already called
-        // 2. Cache invalidated (if any)
-        // 3. Call API directly to get fresh data
+        
         struct FollowingResponse: Codable { 
             let message: String
             let following: [User] 
@@ -767,7 +752,7 @@ extension ProfileView {
     
     private var backgroundView: some View {
         LinearGradient(
-            gradient: Gradient(colors: [Color.accentColor.opacity(0.00), Color.accentColor.opacity(0.0)]),
+            gradient: Gradient(colors: [Color.black.opacity(0.00), Color.black.opacity(0.0)]),
             startPoint: .bottom,
             endPoint: .top
         )
