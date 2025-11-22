@@ -1614,6 +1614,15 @@ extension Creatist {
         return []
     }
 
+    // Get comments with offset-based pagination
+    func getCommentsWithOffset(postId: UUID, limit: Int = 10, offset: Int = 0) async -> [PostComment] {
+        let url = "/posts/\(postId.uuidString)/comments?limit=\(limit)&offset=\(offset)"
+        if let comments: [PostComment] = await NetworkManager.shared.get(url: url) {
+            return comments
+        }
+        return []
+    }
+
     // Fetch all posts for a user
     func fetchUserPosts(userId: UUID) async -> [PostWithDetails] {
         // Check cache first
