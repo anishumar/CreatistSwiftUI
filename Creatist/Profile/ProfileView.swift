@@ -16,6 +16,7 @@ struct ProfileView: View {
     @State private var uploadError: String? = nil
     @State private var followersCount: Int = 0
     @State private var followingCount: Int = 0
+    @State private var refreshTrigger: UUID = UUID() // Force entire view refresh
     var currentUser: User? { Creatist.shared.user }
     @State private var selectedSection = 0
     let sections = ["My Projects", "Top Works"]
@@ -60,7 +61,11 @@ struct ProfileView: View {
                         }
                     }
                 }
+                .refreshable {
+                    await refreshProfileData()
+                }
             }
+            .id(refreshTrigger) // Force entire view refresh when refreshTrigger changes
             .navigationTitle(currentUser?.name ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -115,8 +120,9 @@ struct ProfileView: View {
         }
         .task {
             if let user = currentUser {
-                followersCount = await Creatist.shared.fetchFollowersCount(for: user.id.uuidString)
-                followingCount = await Creatist.shared.fetchFollowingCount(for: user.id.uuidString)
+                let userId = user.id.uuidString.lowercased()
+                followersCount = await Creatist.shared.fetchFollowersCount(for: userId)
+                followingCount = await Creatist.shared.fetchFollowingCount(for: userId)
                 // Always load posts to get accurate count
                 await loadMyPosts(for: user.id)
             }
@@ -183,6 +189,238 @@ struct ProfileView: View {
         await MainActor.run {
             myPosts = posts
             isLoadingMyPosts = false
+        }
+    }
+    
+    func refreshProfileData() async {
+        guard let user = currentUser else {
+            print("[ProfileView] Refresh failed: currentUser is nil")
+            return
+        }
+        
+        let userId = user.id.uuidString.lowercased()
+        guard !userId.isEmpty else {
+            print("[ProfileView] Refresh failed: userId is empty")
+            return
+        }
+        
+        print("[ProfileView] Starting refresh for user: \(userId)")
+        
+        // Capture current values for logging
+        let currentFollowers = await MainActor.run { followersCount }
+        let currentFollowing = await MainActor.run { followingCount }
+        let currentPosts = await MainActor.run { myPosts.count }
+        print("[ProfileView] Current counts before refresh - Followers: \(currentFollowers), Following: \(currentFollowing), Posts: \(currentPosts)")
+        
+        // Step 1: Call the refresh endpoint first and wait for it to complete
+        // This tells the backend to refresh its data
+        let refreshSuccess = await callRefreshEndpoint()
+        
+        if !refreshSuccess {
+            print("[ProfileView] Warning: Refresh endpoint failed, but continuing with data fetch")
+        }
+        
+        // Step 2: Invalidate caches to force fresh data
+        // This ensures we don't use old cached data
+        CacheManager.shared.invalidateUserPostsCache(for: user.id)
+        
+        // Step 3: Fetch fresh data from all endpoints
+        // First fetch updated user data (profile picture, etc.)
+        await refreshCurrentUser()
+        
+        // Get updated user ID after refresh (in case user data changed)
+        let updatedUserId = await MainActor.run {
+            return Creatist.shared.user?.id.uuidString.lowercased() ?? userId
+        }
+        
+        // Then fetch counts and posts in parallel using updated user ID
+        // Following the same pattern as posts refresh:
+        // - Call API directly (bypassing any cache)
+        // - Update state only on successful response
+        // - Preserve existing data on failure
+        let finalUserId = updatedUserId
+        let finalUserUUID = await MainActor.run {
+            return Creatist.shared.user?.id ?? user.id
+        }
+        
+        async let refreshFollowers = refreshFollowersCount(userId: finalUserId)
+        async let refreshFollowing = refreshFollowingCount(userId: finalUserId)
+        async let refreshPosts = refreshMyPosts(for: finalUserUUID)
+        
+        // Wait for all to complete
+        await refreshFollowers
+        await refreshFollowing
+        await refreshPosts
+        
+        // Log final state and trigger view refresh
+        await MainActor.run {
+            let finalFollowers = self.followersCount
+            let finalFollowing = self.followingCount
+            let finalPosts = self.myPosts.count
+            print("[ProfileView] Refresh completed - Followers: \(finalFollowers), Following: \(finalFollowing), Posts: \(finalPosts)")
+            
+            // Force entire view to refresh once after all data is updated
+            self.refreshTrigger = UUID()
+            print("[ProfileView] View refresh triggered")
+        }
+    }
+    
+    func callRefreshEndpoint() async -> Bool {
+        print("[ProfileView] Calling refresh endpoint: POST /v1/refresh")
+        struct RefreshResponse: Codable {
+            let message: String?
+        }
+        
+        let url = "/v1/refresh"
+        if let response: RefreshResponse = await NetworkManager.shared.post(url: url, body: nil) {
+            print("[ProfileView] Refresh endpoint success: \(response.message ?? "success")")
+            return true
+        } else {
+            print("[ProfileView] Refresh endpoint failed or returned nil")
+            return false
+        }
+    }
+    
+    func refreshCurrentUser() async {
+        print("[ProfileView] Fetching updated user data from: GET /auth/fetch")
+        
+        // Fetch updated user data from the API endpoint
+        // The endpoint returns the current user's updated data
+        let url = "/auth/fetch"
+        
+        // Try direct User response first (as per Creatist.fetch() implementation)
+        if let updatedUser: User = await NetworkManager.shared.get(url: url) {
+            print("[ProfileView] User data fetched successfully - name: \(updatedUser.name), profileImage: \(updatedUser.profileImageUrl ?? "nil")")
+            
+            // Update Creatist.shared.user on main thread
+            await MainActor.run {
+                let oldProfileImage = Creatist.shared.user?.profileImageUrl
+                Creatist.shared.user = updatedUser
+                
+                // Update cache
+                CacheManager.shared.cacheUser(updatedUser)
+                
+                print("[ProfileView] Updated currentUser in Creatist.shared")
+                print("[ProfileView] Profile image changed: \(oldProfileImage ?? "nil") → \(updatedUser.profileImageUrl ?? "nil")")
+            }
+        } else {
+            // Try wrapped response format
+            struct UserResponse: Codable {
+                let user: User?
+                let message: String?
+            }
+            
+            if let response: UserResponse = await NetworkManager.shared.get(url: url) {
+                if let updatedUser = response.user {
+                    print("[ProfileView] User data fetched successfully (wrapped) - name: \(updatedUser.name), profileImage: \(updatedUser.profileImageUrl ?? "nil")")
+                    await MainActor.run {
+                        let oldProfileImage = Creatist.shared.user?.profileImageUrl
+                        Creatist.shared.user = updatedUser
+                        CacheManager.shared.cacheUser(updatedUser)
+                        print("[ProfileView] Updated currentUser in Creatist.shared")
+                        print("[ProfileView] Profile image changed: \(oldProfileImage ?? "nil") → \(updatedUser.profileImageUrl ?? "nil")")
+                    }
+                } else {
+                    print("[ProfileView] User data response received but user is nil")
+                }
+            } else {
+                print("[ProfileView] ERROR: Failed to fetch user data - API returned nil")
+            }
+        }
+    }
+    
+    func refreshMyPosts(for userId: UUID) async {
+        // Set loading state
+        await MainActor.run {
+            isLoadingMyPosts = true
+        }
+        
+        // Fetch fresh data directly from API, bypassing cache
+        let url = "/posts/user/\(userId.uuidString.lowercased())"
+        print("[ProfileView] Fetching posts from: \(url)")
+        
+        if let posts: [PostWithDetails] = await NetworkManager.shared.get(url: url) {
+            print("[ProfileView] Fetched \(posts.count) posts successfully")
+            
+            // Update cache with fresh data
+            CacheManager.shared.cacheUserPosts(posts, for: userId)
+            
+            await MainActor.run {
+                myPosts = posts
+                isLoadingMyPosts = false
+            }
+        } else {
+            print("[ProfileView] ERROR: Failed to fetch posts - API returned nil. Keeping existing posts.")
+            // Don't update myPosts if API call fails - keep existing data
+            await MainActor.run {
+                isLoadingMyPosts = false
+            }
+        }
+    }
+    
+    func refreshFollowersCount(userId: String) async {
+        print("[ProfileView] Fetching followers count for: \(userId)")
+        
+        // Same workflow as posts refresh:
+        // 1. POST /v1/refresh already called
+        // 2. Cache invalidated (if any)
+        // 3. Call API directly to get fresh data
+        struct FollowersResponse: Codable { 
+            let message: String
+            let followers: [User] 
+        }
+        let url = "/v1/followers/\(userId.lowercased())"
+        print("[ProfileView] Followers endpoint: \(url)")
+        
+        if let response: FollowersResponse = await NetworkManager.shared.get(url: url) {
+            let count = response.followers.count
+            print("[ProfileView] Followers API success - count: \(count), message: \(response.message)")
+            
+            // Update state on main thread
+            await MainActor.run {
+                let oldCount = self.followersCount
+                self.followersCount = count
+                print("[ProfileView] Updated followersCount: \(oldCount) → \(self.followersCount)")
+            }
+        } else {
+            print("[ProfileView] ERROR: Failed to fetch followers count - API returned nil")
+            // Keep current value, don't reset to 0
+            await MainActor.run {
+                print("[ProfileView] Keeping existing followersCount: \(self.followersCount)")
+            }
+        }
+    }
+    
+    func refreshFollowingCount(userId: String) async {
+        print("[ProfileView] Fetching following count for: \(userId)")
+        
+        // Same workflow as posts refresh:
+        // 1. POST /v1/refresh already called
+        // 2. Cache invalidated (if any)
+        // 3. Call API directly to get fresh data
+        struct FollowingResponse: Codable { 
+            let message: String
+            let following: [User] 
+        }
+        let url = "/v1/following/\(userId.lowercased())"
+        print("[ProfileView] Following endpoint: \(url)")
+        
+        if let response: FollowingResponse = await NetworkManager.shared.get(url: url) {
+            let count = response.following.count
+            print("[ProfileView] Following API success - count: \(count), message: \(response.message)")
+            
+            // Update state on main thread
+            await MainActor.run {
+                let oldCount = self.followingCount
+                self.followingCount = count
+                print("[ProfileView] Updated followingCount: \(oldCount) → \(self.followingCount)")
+            }
+        } else {
+            print("[ProfileView] ERROR: Failed to fetch following count - API returned nil")
+            // Keep current value, don't reset to 0
+            await MainActor.run {
+                print("[ProfileView] Keeping existing followingCount: \(self.followingCount)")
+            }
         }
     }
 
@@ -529,7 +767,7 @@ extension ProfileView {
     
     private var backgroundView: some View {
         LinearGradient(
-            gradient: Gradient(colors: [Color.accentColor.opacity(0.85), Color.accentColor.opacity(0.3)]),
+            gradient: Gradient(colors: [Color.accentColor.opacity(0.00), Color.accentColor.opacity(0.0)]),
             startPoint: .bottom,
             endPoint: .top
         )
@@ -586,11 +824,13 @@ extension ProfileView {
                 StatView(number: Double(followersCount), label: "Followers")
             }
             .buttonStyle(PlainButtonStyle())
+            .id("followers-\(followersCount)") // Force view refresh when count changes
             
             Button(action: { showFollowingSheet = true }) {
                 StatView(number: Double(followingCount), label: "Following")
             }
             .buttonStyle(PlainButtonStyle())
+            .id("following-\(followingCount)") // Force view refresh when count changes
             
             StatView(number: Double(myPosts.count), label: "Projects")
             StatView(number: user.rating ?? 0, label: "Rating", isDouble: true)
