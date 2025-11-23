@@ -65,11 +65,13 @@ struct VisionBoardView: View {
             }
             .background(Color(.systemBackground).ignoresSafeArea())
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showCreateSheet = true
-                    } label: {
-                        Image(systemName: "plus")
+                if selectedTab == 0 {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            showCreateSheet = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
