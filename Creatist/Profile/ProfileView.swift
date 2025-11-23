@@ -16,6 +16,7 @@ struct ProfileView: View {
     @State private var uploadError: String? = nil
     @State private var followersCount: Int = 0
     @State private var followingCount: Int = 0
+    @State private var refreshTrigger: UUID = UUID() // Force entire view refresh
     var currentUser: User? { Creatist.shared.user }
     @State private var selectedSection = 0
     let sections = ["My Projects", "Top Works"]
@@ -60,7 +61,11 @@ struct ProfileView: View {
                         }
                     }
                 }
+                .refreshable {
+                    await refreshProfileData()
+                }
             }
+            .id(refreshTrigger) // Force entire view refresh when refreshTrigger changes
             .navigationTitle(currentUser?.name ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -115,8 +120,9 @@ struct ProfileView: View {
         }
         .task {
             if let user = currentUser {
-                followersCount = await Creatist.shared.fetchFollowersCount(for: user.id.uuidString)
-                followingCount = await Creatist.shared.fetchFollowingCount(for: user.id.uuidString)
+                let userId = user.id.uuidString.lowercased()
+                followersCount = await Creatist.shared.fetchFollowersCount(for: userId)
+                followingCount = await Creatist.shared.fetchFollowingCount(for: userId)
                 // Always load posts to get accurate count
                 await loadMyPosts(for: user.id)
             }
@@ -185,6 +191,223 @@ struct ProfileView: View {
             isLoadingMyPosts = false
         }
     }
+    
+    func refreshProfileData() async {
+        guard let user = currentUser else {
+            print("[ProfileView] Refresh failed: currentUser is nil")
+            return
+        }
+        
+        let userId = user.id.uuidString.lowercased()
+        guard !userId.isEmpty else {
+            print("[ProfileView] Refresh failed: userId is empty")
+            return
+        }
+        
+        print("[ProfileView] Starting refresh for user: \(userId)")
+        
+        // Capture current values for logging
+        let currentFollowers = await MainActor.run { followersCount }
+        let currentFollowing = await MainActor.run { followingCount }
+        let currentPosts = await MainActor.run { myPosts.count }
+        print("[ProfileView] Current counts before refresh - Followers: \(currentFollowers), Following: \(currentFollowing), Posts: \(currentPosts)")
+        
+        // Step 1: Call the refresh endpoint first and wait for it to complete
+        // This tells the backend to refresh its data
+        let refreshSuccess = await callRefreshEndpoint()
+        
+        if !refreshSuccess {
+            print("[ProfileView] Warning: Refresh endpoint failed, but continuing with data fetch")
+        }
+        
+       
+        CacheManager.shared.invalidateUserPostsCache(for: user.id)
+        
+        await refreshCurrentUser()
+        
+        let updatedUserId = await MainActor.run {
+            return Creatist.shared.user?.id.uuidString.lowercased() ?? userId
+        }
+        
+        // Then fetch counts and posts in parallel using updated user ID
+        // Following the same pattern as posts refresh:
+        // - Call API directly (bypassing any cache)
+        // - Update state only on successful response
+        // - Preserve existing data on failure
+        let finalUserId = updatedUserId
+        let finalUserUUID = await MainActor.run {
+            return Creatist.shared.user?.id ?? user.id
+        }
+        
+        async let refreshFollowers = refreshFollowersCount(userId: finalUserId)
+        async let refreshFollowing = refreshFollowingCount(userId: finalUserId)
+        async let refreshPosts = refreshMyPosts(for: finalUserUUID)
+        
+        // Wait for all to complete
+        await refreshFollowers
+        await refreshFollowing
+        await refreshPosts
+        
+        // Log final state and trigger view refresh
+        await MainActor.run {
+            let finalFollowers = self.followersCount
+            let finalFollowing = self.followingCount
+            let finalPosts = self.myPosts.count
+            print("[ProfileView] Refresh completed - Followers: \(finalFollowers), Following: \(finalFollowing), Posts: \(finalPosts)")
+            
+            // Force entire view to refresh once after all data is updated
+            self.refreshTrigger = UUID()
+            print("[ProfileView] View refresh triggered")
+        }
+    }
+    
+    func callRefreshEndpoint() async -> Bool {
+        print("[ProfileView] Calling refresh endpoint: POST /v1/refresh")
+        struct RefreshResponse: Codable {
+            let message: String?
+        }
+        
+        let url = "/v1/refresh"
+        if let response: RefreshResponse = await NetworkManager.shared.post(url: url, body: nil) {
+            print("[ProfileView] Refresh endpoint success: \(response.message ?? "success")")
+            return true
+        } else {
+            print("[ProfileView] Refresh endpoint failed or returned nil")
+            return false
+        }
+    }
+    
+    func refreshCurrentUser() async {
+
+        let url = "/auth/fetch"
+        
+        // Try direct User response first (as per Creatist.fetch() implementation)
+        if let updatedUser: User = await NetworkManager.shared.get(url: url) {
+            print("[ProfileView] User data fetched successfully - name: \(updatedUser.name), profileImage: \(updatedUser.profileImageUrl ?? "nil")")
+            
+            // Update Creatist.shared.user on main thread
+            await MainActor.run {
+                let oldProfileImage = Creatist.shared.user?.profileImageUrl
+                Creatist.shared.user = updatedUser
+                
+                // Update cache
+                CacheManager.shared.cacheUser(updatedUser)
+                
+            }
+        } else {
+            // Try wrapped response format
+            struct UserResponse: Codable {
+                let user: User?
+                let message: String?
+            }
+            
+            if let response: UserResponse = await NetworkManager.shared.get(url: url) {
+                if let updatedUser = response.user {
+                    print("[ProfileView] User data fetched successfully (wrapped) - name: \(updatedUser.name), profileImage: \(updatedUser.profileImageUrl ?? "nil")")
+                    await MainActor.run {
+                        let oldProfileImage = Creatist.shared.user?.profileImageUrl
+                        Creatist.shared.user = updatedUser
+                        CacheManager.shared.cacheUser(updatedUser)
+                        print("[ProfileView] Updated currentUser in Creatist.shared")
+                        print("[ProfileView] Profile image changed: \(oldProfileImage ?? "nil") → \(updatedUser.profileImageUrl ?? "nil")")
+                    }
+                } else {
+                    print("[ProfileView] User data response received but user is nil")
+                }
+            } else {
+                print("[ProfileView] ERROR: Failed to fetch user data - API returned nil")
+            }
+        }
+    }
+    
+    func refreshMyPosts(for userId: UUID) async {
+        // Set loading state
+        await MainActor.run {
+            isLoadingMyPosts = true
+        }
+        
+        // Fetch fresh data directly from API, bypassing cache
+        let url = "/posts/user/\(userId.uuidString.lowercased())"
+        print("[ProfileView] Fetching posts from: \(url)")
+        
+        if let posts: [PostWithDetails] = await NetworkManager.shared.get(url: url) {
+            print("[ProfileView] Fetched \(posts.count) posts successfully")
+            
+            // Update cache with fresh data
+            CacheManager.shared.cacheUserPosts(posts, for: userId)
+            
+            await MainActor.run {
+                myPosts = posts
+                isLoadingMyPosts = false
+            }
+        } else {
+            print("[ProfileView] ERROR: Failed to fetch posts - API returned nil. Keeping existing posts.")
+            // Don't update myPosts if API call fails - keep existing data
+            await MainActor.run {
+                isLoadingMyPosts = false
+            }
+        }
+    }
+    
+    func refreshFollowersCount(userId: String) async {
+        print("[ProfileView] Fetching followers count for: \(userId)")
+        
+    
+        struct FollowersResponse: Codable { 
+            let message: String
+            let followers: [User] 
+        }
+        let url = "/v1/followers/\(userId.lowercased())"
+        print("[ProfileView] Followers endpoint: \(url)")
+        
+        if let response: FollowersResponse = await NetworkManager.shared.get(url: url) {
+            let count = response.followers.count
+            print("[ProfileView] Followers API success - count: \(count), message: \(response.message)")
+            
+            // Update state on main thread
+            await MainActor.run {
+                let oldCount = self.followersCount
+                self.followersCount = count
+                print("[ProfileView] Updated followersCount: \(oldCount) → \(self.followersCount)")
+            }
+        } else {
+            print("[ProfileView] ERROR: Failed to fetch followers count - API returned nil")
+            // Keep current value, don't reset to 0
+            await MainActor.run {
+                print("[ProfileView] Keeping existing followersCount: \(self.followersCount)")
+            }
+        }
+    }
+    
+    func refreshFollowingCount(userId: String) async {
+        print("[ProfileView] Fetching following count for: \(userId)")
+        
+        
+        struct FollowingResponse: Codable { 
+            let message: String
+            let following: [User] 
+        }
+        let url = "/v1/following/\(userId.lowercased())"
+        print("[ProfileView] Following endpoint: \(url)")
+        
+        if let response: FollowingResponse = await NetworkManager.shared.get(url: url) {
+            let count = response.following.count
+            print("[ProfileView] Following API success - count: \(count), message: \(response.message)")
+            
+            // Update state on main thread
+            await MainActor.run {
+                let oldCount = self.followingCount
+                self.followingCount = count
+                print("[ProfileView] Updated followingCount: \(oldCount) → \(self.followingCount)")
+            }
+        } else {
+            print("[ProfileView] ERROR: Failed to fetch following count - API returned nil")
+            // Keep current value, don't reset to 0
+            await MainActor.run {
+                print("[ProfileView] Keeping existing followingCount: \(self.followingCount)")
+            }
+        }
+    }
 
     func fetchUser(userId: UUID, completion: @escaping (User?) -> Void) {
         if let cached = userCache[userId] {
@@ -214,6 +437,7 @@ struct CreateSelfPostSheet: View {
     @State private var isPosting = false
     @State private var postError: String? = nil
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) var colorScheme
     // Load media data when selection changes
     @MainActor
     func loadMediaData(from items: [PhotosPickerItem]) async {
@@ -237,44 +461,175 @@ struct CreateSelfPostSheet: View {
     var body: some View {
         NavigationView {
             VStack(alignment: .leading, spacing: 16) {
-                PhotosPicker(selection: $selectedMedia, maxSelectionCount: 10, matching: .any(of: [.images, .videos])) {
-                    HStack {
-                        Image(systemName: "photo.on.rectangle.angled")
-                        Text("Select Media")
+                // Media Preview
+                if !mediaData.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(Array(mediaData.enumerated()), id: \.offset) { element in
+                                let idx = element.offset
+                                let item = element.element
+                                if item.type == "video" {
+                                    Image(systemName: "video.fill")
+                                        .resizable().aspectRatio(contentMode: .fit)
+                                        .frame(width: 160, height: 160)
+                                        .foregroundColor(.accentColor)
+                                } else if let uiImage = UIImage(data: item.data) {
+                                    Image(uiImage: uiImage)
+                                        .resizable().aspectRatio(contentMode: .fill)
+                                        .frame(width: 160, height: 160)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                            }
+                        }
+                        .padding(.vertical, 8)
                     }
-                    .padding(8)
-                    .background(Color.accentColor.opacity(0.1))
-                    .cornerRadius(8)
+                }
+                
+                // Upload Media Container with Liquid Glass UI
+                PhotosPicker(selection: $selectedMedia, maxSelectionCount: 10, matching: .any(of: [.images, .videos])) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Top Left: Upload Media Label with Icon
+                        HStack(spacing: 8) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(colorScheme == .dark ? Color.blue.opacity(0.8) : Color.blue.opacity(0.7))
+                            Text("Upload Media")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(colorScheme == .dark ? Color.blue.opacity(0.6) : Color.blue.opacity(0.7))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                                .foregroundColor(colorScheme == .dark ? Color.blue.opacity(0.5) : Color.blue.opacity(0.4))
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
+                        
+                        // Main Drop Zone Area
+                        VStack(spacing: 12) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.9) : Color.primary.opacity(0.8))
+                            Text("Upload Media")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.9) : Color.primary.opacity(0.8))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 140)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.03))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                                        .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.3) : Color.secondary.opacity(0.4))
+                                )
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                        .padding(.bottom, 12)
+                        
+                        // Bottom Left: Placeholder Text
+                        HStack {
+                            Text("Upload media for the post")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 12)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        // Enhanced Liquid Glass Effect
+                        ZStack {
+                            // Base glass material
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(.ultraThinMaterial)
+                            
+                            // Gradient overlay for depth (adaptive)
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: colorScheme == .dark ? [
+                                            Color.white.opacity(0.12),
+                                            Color.white.opacity(0.06)
+                                        ] : [
+                                            Color.white.opacity(0.1),
+                                            Color.white.opacity(0.05)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                            
+                            // Blue border with gradient (adaptive)
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: colorScheme == .dark ? [
+                                            Color.blue.opacity(0.8),
+                                            Color.blue.opacity(0.5),
+                                            Color.blue.opacity(0.4)
+                                        ] : [
+                                            Color.blue.opacity(0.7),
+                                            Color.blue.opacity(0.4),
+                                            Color.blue.opacity(0.3)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                        }
+                        .shadow(color: colorScheme == .dark ? Color.black.opacity(0.3) : Color.black.opacity(0.15), radius: 15, x: 0, y: 8)
+                        .shadow(color: Color.blue.opacity(0.1), radius: 5, x: 0, y: 2)
+                    )
                 }
                 .onChange(of: selectedMedia) { newItems in
                     print("[DEBUG] PhotosPicker selection changed. New items count: \(newItems.count)")
                     Task { await loadMediaData(from: newItems) }
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(Array(mediaData.enumerated()), id: \.offset) { element in
-                            let idx = element.offset
-                            let item = element.element
-                            if item.type == "video" {
-                                Image(systemName: "video.fill")
-                                    .resizable().aspectRatio(contentMode: .fit)
-                                    .frame(width: 80, height: 80)
-                                    .foregroundColor(.accentColor)
-                            } else if let uiImage = UIImage(data: item.data) {
-                                Image(uiImage: uiImage)
-                                    .resizable().aspectRatio(contentMode: .fill)
-                                    .frame(width: 80, height: 80)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                        }
-                    }
-                }
+                
+                // Title Input Field
                 TextField("Title", text: $title)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                    .foregroundColor(.primary)
+                
+                // Description Input Field
                 TextField("Description", text: $description)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                    .foregroundColor(.primary)
+                
+                // Tags Input Field
                 TextField("Tags (comma separated)", text: $tags)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                    .foregroundColor(.primary)
+                
                 if let postError = postError {
                     Text(postError).foregroundColor(.red).font(.caption)
                 }
@@ -287,14 +642,28 @@ struct CreateSelfPostSheet: View {
                 Spacer()
             }
             .padding()
+            .background(Color(UIColor.systemBackground))
             .navigationTitle("Create Post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(action: { dismiss() }) {
+                        Text("Cancel")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .frame(minWidth: 60)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(colorScheme == .dark ? Color.white.opacity(0.15) : Color.secondary.opacity(0.1))
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Post") {
+                    Button(action: {
                         Task {
                             print("[DEBUG] Post button clicked. Starting post flow...")
                             isPosting = true
@@ -386,7 +755,21 @@ struct CreateSelfPostSheet: View {
                                 print("[DEBUG] [Post] Failed to create post.")
                             }
                         }
-                    }.disabled(title.isEmpty || mediaData.isEmpty || isPosting)
+                    }) {
+                        Text("Post")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor((title.isEmpty || mediaData.isEmpty || isPosting) ? (colorScheme == .dark ? Color.white.opacity(0.5) : Color.secondary.opacity(0.6)) : .primary)
+                            .frame(minWidth: 60)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(colorScheme == .dark ? Color.white.opacity(0.15) : Color.secondary.opacity(0.1))
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(title.isEmpty || mediaData.isEmpty || isPosting)
                 }
             }
         }
@@ -529,7 +912,7 @@ extension ProfileView {
     
     private var backgroundView: some View {
         LinearGradient(
-            gradient: Gradient(colors: [Color.accentColor.opacity(0.85), Color.accentColor.opacity(0.3)]),
+            gradient: Gradient(colors: [Color.black.opacity(0.00), Color.black.opacity(0.0)]),
             startPoint: .bottom,
             endPoint: .top
         )
@@ -541,7 +924,7 @@ extension ProfileView {
         ZStack {
             Circle()
                 .fill(Color(.systemBackground))
-                .frame(width: 110, height: 110)
+                .frame(width: 105, height: 105)
             if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
                     if let image = phase.image {
@@ -586,11 +969,13 @@ extension ProfileView {
                 StatView(number: Double(followersCount), label: "Followers")
             }
             .buttonStyle(PlainButtonStyle())
+            .id("followers-\(followersCount)") // Force view refresh when count changes
             
             Button(action: { showFollowingSheet = true }) {
                 StatView(number: Double(followingCount), label: "Following")
             }
             .buttonStyle(PlainButtonStyle())
+            .id("following-\(followingCount)") // Force view refresh when count changes
             
             StatView(number: Double(myPosts.count), label: "Projects")
             StatView(number: user.rating ?? 0, label: "Rating", isDouble: true)

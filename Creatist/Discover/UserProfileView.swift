@@ -15,6 +15,8 @@ struct UserProfileView: View {
 
     @State private var fetchedUser: User? = nil
     @State private var isLoadingUser = false
+    @State private var showFollowersSheet = false
+    @State private var showFollowingSheet = false
     
     var user: User? {
         viewModel.topRatedUsers.first(where: { $0.id == userId }) ??
@@ -105,6 +107,22 @@ struct UserProfileView: View {
         .onChange(of: selectedSection) { newValue in
             // Posts are already loaded, no need to reload
         }
+        .sheet(isPresented: $showFollowersSheet) {
+            if let user = user {
+                FollowersListView(userId: user.id.uuidString)
+            } else {
+                Text("User not available")
+                    .padding()
+            }
+        }
+        .sheet(isPresented: $showFollowingSheet) {
+            if let user = user {
+                FollowingListView(userId: user.id.uuidString)
+            } else {
+                Text("User not available")
+                    .padding()
+            }
+        }
     }
 
     func loadUserPosts(for userId: UUID) async {
@@ -189,7 +207,7 @@ extension UserProfileView {
     
     private var backgroundView: some View {
         LinearGradient(
-            gradient: Gradient(colors: [Color.accentColor.opacity(0.85), Color.clear]),
+            gradient: Gradient(colors: [Color.accentColor.opacity(0.00), Color.accentColor.opacity(0.00)]),
             startPoint: .bottom,
             endPoint: .top
         )
@@ -246,8 +264,16 @@ extension UserProfileView {
     
     private func statsView(user: User) -> some View {
         HStack(spacing: 24) {
-            StatView(number: Double(followersCount), label: "Followers")
-            StatView(number: Double(followingCount), label: "Following")
+            Button(action: { showFollowersSheet = true }) {
+                StatView(number: Double(followersCount), label: "Followers")
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Button(action: { showFollowingSheet = true }) {
+                StatView(number: Double(followingCount), label: "Following")
+            }
+            .buttonStyle(PlainButtonStyle())
+            
             StatView(number: Double(userPosts.count), label: "Projects")
             StatView(number: user.rating ?? 0, label: "Rating", isDouble: true)
         }

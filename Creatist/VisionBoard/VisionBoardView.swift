@@ -16,6 +16,7 @@ struct VisionBoardView: View {
     @StateObject private var invitationVM = InvitationListViewModel()
     @State private var selectedBoard: VisionBoard? = nil
     @StateObject private var cacheManager = CacheManager.shared
+    @State private var pendingInvitationCount: Int = 0
 
     var body: some View {
         NavigationView {
@@ -72,8 +73,30 @@ struct VisionBoardView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showInvitations = true }) {
-                        Image(systemName: "envelope.open")
+                    Button(action: { 
+                        showInvitations = true
+                        Task { await fetchPendingInvitationCount() }
+                    }) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: pendingInvitationCount > 0 ? "tray.fill" : "tray")
+                                .font(.system(size: 20))
+                            if pendingInvitationCount > 0 {
+                                Text("\(pendingInvitationCount > 99 ? "99+" : "\(pendingInvitationCount)")")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(minWidth: 18, minHeight: 18)
+                                    .padding(.horizontal, pendingInvitationCount > 9 ? 4 : 2)
+                                    .background(
+                                        Circle()
+                                            .fill(Color.red)
+                                    )
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white, lineWidth: 1.5)
+                                    )
+                                    .offset(x: 6, y: -6)
+                            }
+                        }
                     }
                 }
             }
@@ -83,7 +106,9 @@ struct VisionBoardView: View {
             .sheet(isPresented: $showNotifications) {
                 NotificationPanelView(viewModel: notificationVM)
             }
-            .sheet(isPresented: $showInvitations) {
+            .sheet(isPresented: $showInvitations, onDismiss: {
+                Task { await fetchPendingInvitationCount() }
+            }) {
                 InvitationPanelView(viewModel: invitationVM)
             }
             .onAppear {
@@ -94,8 +119,12 @@ struct VisionBoardView: View {
                 // Then fetch fresh data
                 reloadBoards()
                 
+                // Fetch pending invitation count
+                Task { await fetchPendingInvitationCount() }
+                
                 NotificationCenter.default.addObserver(forName: .didRespondToInvitation, object: nil, queue: .main) { _ in
                     reloadBoards()
+                    Task { await fetchPendingInvitationCount() }
                 }
             }
             .onChange(of: selectedTab) { newTab in
@@ -174,6 +203,61 @@ struct VisionBoardView: View {
             return AnyView(VisionDetailView(board: board))
         }
     }
+    
+    func fetchPendingInvitationCount() async {
+        let accessToken = KeychainHelper.get("accessToken")
+        guard let token = accessToken, !token.isEmpty else {
+            await MainActor.run { self.pendingInvitationCount = 0 }
+            return
+        }
+        
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/invitations/user?status=pending") else {
+            await MainActor.run { self.pendingInvitationCount = 0 }
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        do {
+            let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                await MainActor.run { self.pendingInvitationCount = 0 }
+                return
+            }
+            
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let dateString = try container.decode(String.self)
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                if let date = isoFormatter.date(from: dateString) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted.")
+            }
+            
+            // Decode the response which is a dictionary with "invitations" key
+            let result = try decoder.decode([String: [Invitation]].self, from: data)
+            let invitations = result["invitations"] ?? []
+            
+            // Count only pending invitations (filter by status)
+            let pendingCount = invitations.filter { $0.status.lowercased() == "pending" }.count
+            
+            await MainActor.run {
+                self.pendingInvitationCount = pendingCount
+            }
+        } catch {
+            print("[VisionBoardView] Error fetching pending invitation count: \(error.localizedDescription)")
+            await MainActor.run { self.pendingInvitationCount = 0 }
+        }
+    }
 }
 
 struct VisionBoardView_Previews: PreviewProvider {
@@ -181,4 +265,3 @@ struct VisionBoardView_Previews: PreviewProvider {
         VisionBoardView()
     }
 }
- 
