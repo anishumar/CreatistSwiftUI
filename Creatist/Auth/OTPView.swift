@@ -54,14 +54,15 @@ struct OTPView: View {
         }
         isLoading = true
         Task {
-            let success = await Creatist.shared.verifyOTP(otp)
+            let result = await Creatist.shared.verifyOTP(otp)
             await MainActor.run {
                 isLoading = false
-                if success == true {
+                switch result {
+                case .success:
                     onSuccess()
                     dismiss()
-                } else {
-                    errorMessage = "Invalid OTP. Please try again."
+                case .failure(let error):
+                    errorMessage = error
                 }
             }
         }

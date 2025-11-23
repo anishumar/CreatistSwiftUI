@@ -9,6 +9,16 @@ import SwiftUI
 
 @main
 struct CreatistApp: App {
+    init() {
+        // Configure Google Sign-In
+        let googleClientID = EnvironmentConfig.shared.googleClientID
+        if !googleClientID.isEmpty {
+            GoogleAuthHelper.shared.configure(clientID: googleClientID)
+        } else {
+            print("⚠️ Google Sign-In not configured: GOOGLE_CLIENT_ID not set")
+        }
+    }
+    
     var body: some Scene {
         WindowGroup {
             SplashWrapperView()

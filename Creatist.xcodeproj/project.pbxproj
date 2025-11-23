@@ -6,13 +6,31 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C2F76BEC2EB6A23000019D8C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C2F76BEB2EB6A23000019D8C /* GoogleSignIn */; };
+		C2F76BEE2EB6A23000019D8C /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C2F76BED2EB6A23000019D8C /* GoogleSignInSwift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		C24CA1F62E17E0FF002F42C7 /* Creatist.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Creatist.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C2F76BF02EB6A29900019D8C /* Exceptions for "Creatist" folder in "Creatist" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C24CA1F52E17E0FF002F42C7 /* Creatist */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C24CA1F82E17E0FF002F42C7 /* Creatist */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C2F76BF02EB6A29900019D8C /* Exceptions for "Creatist" folder in "Creatist" target */,
+			);
 			path = Creatist;
 			sourceTree = "<group>";
 		};
@@ -23,6 +41,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C2F76BEC2EB6A23000019D8C /* GoogleSignIn in Frameworks */,
+				C2F76BEE2EB6A23000019D8C /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +85,8 @@
 			);
 			name = Creatist;
 			packageProductDependencies = (
+				C2F76BEB2EB6A23000019D8C /* GoogleSignIn */,
+				C2F76BED2EB6A23000019D8C /* GoogleSignInSwift */,
 			);
 			productName = Creatist;
 			productReference = C24CA1F62E17E0FF002F42C7 /* Creatist.app */;
@@ -94,6 +116,9 @@
 			);
 			mainGroup = C24CA1ED2E17E0FF002F42C7;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C2F76BEA2EB6A23000019D8C /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C24CA1F72E17E0FF002F42C7 /* Products */;
 			projectDirPath = "";
@@ -255,6 +280,7 @@
 				DEVELOPMENT_TEAM = 73B8W4ZN6V;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Creatist/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "   This app needs your location to show nearby users in the Discover tab.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -267,7 +293,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.maverick.creatist.llc;
+				PRODUCT_BUNDLE_IDENTIFIER = in.maverick.Creatist;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -287,6 +313,7 @@
 				DEVELOPMENT_TEAM = 73B8W4ZN6V;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Creatist/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "   This app needs your location to show nearby users in the Discover tab.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -299,7 +326,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.maverick.creatist.llc;
+				PRODUCT_BUNDLE_IDENTIFIER = in.maverick.Creatist;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -330,6 +357,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C2F76BEA2EB6A23000019D8C /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C2F76BEB2EB6A23000019D8C /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C2F76BEA2EB6A23000019D8C /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		C2F76BED2EB6A23000019D8C /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C2F76BEA2EB6A23000019D8C /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C24CA1EE2E17E0FF002F42C7 /* Project object */;
 }

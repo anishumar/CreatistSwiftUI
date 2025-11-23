@@ -5,47 +5,108 @@ struct SignupView: View {
     @State private var firstName: String = ""
     @State private var lastName: String = ""
     @State private var email: String = ""
+    @State private var phoneNumber: String = ""
+    @State private var selectedCountryCode: CountryCode = CountryCode.getDefault()
+    @State private var showCountryCodePicker: Bool = false
     @State private var password: String = ""
     @State private var confirmPassword: String = ""
     @State private var isLoading: Bool = false
     @State private var errorMessage: String? = nil
     @State private var showOTP: Bool = false
     @State private var otpEmail: String = ""
+    @State private var isSignupComplete: Bool = false
+    @State private var otp: String = ""
     
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                Text("Sign Up")
-                    .font(.largeTitle)
-                    .bold()
-                    .padding(.top, 24)
-                
-                TextField("First Name", text: $firstName)
-                    .autocapitalization(.words)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
-                TextField("Last Name", text: $lastName)
-                    .autocapitalization(.words)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
-                TextField("Email", text: $email)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
-                SecureField("Password", text: $password)
-                    .textContentType(.newPassword)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
-                SecureField("Confirm Password", text: $confirmPassword)
-                    .textContentType(.newPassword)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
+                if !isSignupComplete {
+                    Text("Sign Up")
+                        .font(.largeTitle)
+                        .bold()
+                        .padding(.top, 24)
+                    
+                    TextField("First Name", text: $firstName)
+                        .autocapitalization(.words)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                    TextField("Last Name", text: $lastName)
+                        .autocapitalization(.words)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                    TextField("Email", text: $email)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                    HStack(spacing: 8) {
+                        // Country Code Picker Button
+                        Button(action: {
+                            showCountryCodePicker = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Text(selectedCountryCode.flag)
+                                Text(selectedCountryCode.code)
+                                    .foregroundColor(.primary)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 12)
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(8)
+                        }
+                        
+                        // Phone Number Input
+                        TextField("Phone Number (optional)", text: $phoneNumber)
+                            .keyboardType(.phonePad)
+                            .textContentType(.telephoneNumber)
+                            .padding()
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(8)
+                    }
+                    SecureField("Password", text: $password)
+                        .textContentType(.newPassword)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                    SecureField("Confirm Password", text: $confirmPassword)
+                        .textContentType(.newPassword)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                } else {
+                    // Show verification step
+                    VStack(spacing: 16) {
+                        Image(systemName: "envelope.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.accentColor)
+                        
+                        Text("Verify Your Email")
+                            .font(.title2)
+                            .bold()
+                        
+                        Text("We've sent a verification code to")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        Text(otpEmail)
+                            .font(.subheadline)
+                            .bold()
+                            .foregroundColor(.primary)
+                        
+                        Text("Please check your email and enter the code below to complete your registration.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .padding(.top, 40)
+                }
                 
                 if let errorMessage = errorMessage {
                     Text(errorMessage)
@@ -53,11 +114,23 @@ struct SignupView: View {
                         .font(.subheadline)
                 }
                 
-                Button(action: signup) {
+                if isSignupComplete {
+                    // OTP Input Field
+                    TextField("Enter verification code", text: $otp)
+                        .keyboardType(.numberPad)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                        .multilineTextAlignment(.center)
+                        .font(.title2)
+                        .bold()
+                }
+                
+                Button(action: isSignupComplete ? verifyOTP : signup) {
                     if isLoading {
                         ProgressView()
                     } else {
-                        Text("Sign Up")
+                        Text(isSignupComplete ? "Verify & Complete Signup" : "Sign Up")
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.accentColor)
@@ -68,18 +141,47 @@ struct SignupView: View {
                 .disabled(isLoading)
                 .padding(.top, 8)
                 
+                // Google Sign-Up Button (only show on initial signup screen)
+                if !isSignupComplete {
+                    Button(action: signUpWithGoogle) {
+                        HStack(spacing: 12) {
+                            Image("Google")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                            Text("Sign up with Google")
+                                .fontWeight(.medium)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(red: 0.21, green: 0.21, blue: 0.21)) // Dark gray #363636
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+                    .disabled(isLoading)
+                    .padding(.top, 8)
+                }
+                
                 Spacer()
             }
             .padding()
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showCountryCodePicker) {
+                CountryCodePickerView(selectedCountryCode: $selectedCountryCode)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-            .sheet(isPresented: $showOTP) {
-                OTPView(email: otpEmail) {
-                    dismiss() // On successful OTP, dismiss signup
+                    if isSignupComplete {
+                        Button("Back") {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                isSignupComplete = false
+                                otp = ""
+                                errorMessage = nil
+                            }
+                        }
+                    } else {
+                        Button("Cancel") { dismiss() }
+                    }
                 }
             }
         }
@@ -88,7 +190,7 @@ struct SignupView: View {
     func signup() {
         errorMessage = nil
         guard !firstName.isEmpty, !lastName.isEmpty, !email.isEmpty, !password.isEmpty, !confirmPassword.isEmpty else {
-            errorMessage = "Please fill in all fields."
+            errorMessage = "Please fill in all required fields."
             return
         }
         guard password == confirmPassword else {
@@ -97,23 +199,93 @@ struct SignupView: View {
         }
         isLoading = true
         Task {
-            let user = User(id: UUID(), name: firstName + " " + lastName, email: email, password: password)
-            let success = await Creatist.shared.signup(user)
-            if success {
-                let otpSent = await Creatist.shared.requestOTP()
+            var phone: String? = nil
+            if !phoneNumber.isEmpty {
+                // Format phone number with selected country code
+                var formattedPhone = phoneNumber.trimmingCharacters(in: .whitespaces)
+                if formattedPhone.hasPrefix("+") {
+                    // User may have typed country code, check if it matches selected
+                    if !formattedPhone.hasPrefix(selectedCountryCode.code) {
+                        // Different country code, use what user typed
+                        formattedPhone = formattedPhone
+                    }
+                } else {
+                    // Add selected country code
+                    formattedPhone = selectedCountryCode.code + formattedPhone
+                }
+                phone = formattedPhone
+            }
+            
+            var user = User(id: UUID(), name: firstName + " " + lastName, email: email, password: password)
+            user.phoneNumber = phone
+            let result = await Creatist.shared.signup(user)
+            await MainActor.run {
+                isLoading = false
+                switch result {
+                case .success:
+                    // For existing users who don't need verification
+                    dismiss()
+                case .requiresVerification:
+                    // For new users who need OTP verification - transition to verification mode
+                    otpEmail = email
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        isSignupComplete = true
+                    }
+                case .failure(let error):
+                    errorMessage = error
+                }
+            }
+        }
+    }
+    
+    func verifyOTP() {
+        errorMessage = nil
+        guard !otp.isEmpty else {
+            errorMessage = "Please enter the verification code."
+            return
+        }
+        isLoading = true
+        Task {
+            let result = await Creatist.shared.verifyOTP(otp)
+            await MainActor.run {
+                isLoading = false
+                switch result {
+                case .success:
+                    dismiss() // On successful OTP verification, dismiss signup
+                case .failure(let error):
+                    errorMessage = error
+                }
+            }
+        }
+    }
+    
+    func signUpWithGoogle() {
+        errorMessage = nil
+        isLoading = true
+        
+        Task {
+            do {
+                // Get Google ID token
+                let idToken = try await GoogleAuthHelper.shared.signIn()
+                
+                // Authenticate with backend (unified endpoint handles both sign-in and sign-up)
+                let result = await Creatist.shared.googleAuth(idToken: idToken)
+                
                 await MainActor.run {
                     isLoading = false
-                    if otpSent == true {
-                        otpEmail = email
-                        showOTP = true
-                    } else {
-                        errorMessage = "Failed to send OTP. Try again."
+                    switch result {
+                    case .success:
+                        dismiss() // Sign up successful, dismiss the view
+                    case .failure(let error):
+                        errorMessage = error
+                    case .requiresVerification:
+                        errorMessage = "Verification required"
                     }
                 }
-            } else {
+            } catch {
                 await MainActor.run {
                     isLoading = false
-                    errorMessage = "Signup failed. Try again."
+                    errorMessage = "Google sign-up failed: \(error.localizedDescription)"
                 }
             }
         }

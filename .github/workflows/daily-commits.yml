@@ -1,0 +1,58 @@
+name: Daily Commit Summary
+
+on:
+  schedule:
+    # Runs daily at 00:30 IST (19:00 UTC previous day)
+    - cron: '30 19 * * *'
+  workflow_dispatch:   # allows manual run for testing
+
+env:
+  TZ: Asia/Kolkata
+
+jobs:
+  email_commits:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # fetch full history so git log works
+
+      - name: Build today's commit list
+        id: commits
+        run: |
+          # Get today's date in Asia/Kolkata timezone
+          TODAY=$(TZ="Asia/Kolkata" date +%F)
+          echo "Generating commits for $TODAY"
+
+          # Get commits for today across all branches
+          COMMITS=$(git --no-pager log --since="$TODAY 00:00:00" --until="$TODAY 23:59:59" --pretty=format:"%h | %an | %ad | %s" --date=iso)
+
+          # Create summary.txt
+          if [ -z "$COMMITS" ]; then
+            echo "No commits found for $TODAY" > summary.txt
+          else
+            printf "Commits for %s\n\n" "$TODAY" > summary.txt
+            printf "%s\n" "$COMMITS" >> summary.txt
+          fi
+
+          # Print summary for logs/debugging
+          echo "----- summary.txt -----"
+          cat summary.txt
+          echo "----- end -----"
+        shell: bash
+
+      - name: Send email (Gmail SMTP)
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "Daily Git Commits — ${{ env.TZ }} summary"
+          to: creatist.swift@gmail.com
+          from: GitHub Actions <${{ secrets.EMAIL_USER }}>
+          secure: true
+          body: file://summary.txt
+

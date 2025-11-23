@@ -11,35 +11,61 @@ class Creatist {
     // In-memory cache for vision board users
     var visionBoardUserCache: [UUID: [User]] = [:]
     
-    private func _login(email: String, password: String) async -> LoginResponse? {
+    private func _login(email: String, password: String) async -> (LoginResponse?, Int) {
         let credentials = Credential(email: email, password: password)
         guard let data = credentials.toData() else {
-            return nil
+            return (nil, 0)
         }
-        return await NetworkManager.shared.post(url: "/auth/signin", body: data)
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/signin", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return (nil, statusCode)
+        }
+        
+        do {
+            let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
+            return (loginResponse, statusCode)
+        } catch {
+            print("Login decode error: \(error)")
+            return (nil, statusCode)
+        }
     }
     
-    func login(email: String, password: String) async -> Bool {
-        let loginResponse: LoginResponse? = await _login(email: email, password: password)
-        if loginResponse?.message == "success",
-           let accessToken = loginResponse?.access_token,
-           let refreshToken = loginResponse?.refresh_token {
-            KeychainHelper.set(email, forKey: "email")
-            KeychainHelper.set(password, forKey: "password")
-            KeychainHelper.set(accessToken, forKey: "accessToken")
-            KeychainHelper.set(refreshToken, forKey: "refreshToken")
-            
-            // Store token expiration time if provided
-            if let expiresIn = loginResponse?.expires_in {
-                let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
-                KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
-                print("🔐 Login: Token expiration set to \(expirationTime)")
+    func clearUserCache() {
+                visionBoardUserCache.removeAll()
             }
-            
-            await self.fetch()
-            return true
+    
+    func login(email: String, password: String) async -> LoginResult {
+        let (loginResponse, statusCode) = await _login(email: email, password: password)
+        
+        switch statusCode {
+        case 200:
+            if loginResponse?.message == "success",
+               let accessToken = loginResponse?.access_token,
+               let refreshToken = loginResponse?.refresh_token {
+                KeychainHelper.set(email, forKey: "email")
+                KeychainHelper.set(password, forKey: "password")
+                KeychainHelper.set(accessToken, forKey: "accessToken")
+                KeychainHelper.set(refreshToken, forKey: "refreshToken")
+                
+                // Store token expiration time if provided
+                if let expiresIn = loginResponse?.expires_in {
+                    let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
+                    KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
+                    print("🔐 Login: Token expiration set to \(expirationTime)")
+                }
+                
+                await self.fetch()
+                return .success
+            }
+            return .failure("Login failed")
+        case 401:
+            return .failure("Invalid email or password")
+        case 403:
+            return .requiresVerification
+        default:
+            return .failure("Login failed")
         }
-        return false
     }
     
     func autologin() async -> Bool? {
@@ -48,39 +74,277 @@ class Creatist {
         guard let email, let password else {
             return false
         }
-        let response = await _login(email: email, password: password)
-        if response?.message == "success",
-           let accessToken = response?.access_token,
-           let refreshToken = response?.refresh_token {
-            KeychainHelper.set(accessToken, forKey: "accessToken")
-            KeychainHelper.set(refreshToken, forKey: "refreshToken")
-            if let expiresIn = response?.expires_in {
-                let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
-                KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
-                print("🔐 Autologin: Token expiration set to \(expirationTime)")
-            }
-            await self.fetch()
+        let result = await login(email: email, password: password)
+        switch result {
+        case .success:
             return true
-        }
-        return false
-    }
-    
-    func signup(_ user: User) async -> Bool {
-        guard let data = user.toData() else {
+        case .failure, .requiresVerification:
             return false
         }
-        let response: Response? = await NetworkManager.shared.post(url: "/auth/signup", body: data)
-        if response?.message == "success" {
-            KeychainHelper.set(user.email, forKey: "email")
-            KeychainHelper.set(user.password, forKey: "password")
+    }
+    
+    /// Google authentication - unified sign-in/sign-up
+    /// This single API call handles both new user registration and existing user login
+    func googleAuth(idToken: String) async -> LoginResult {
+        let googleAuthRequest = GoogleAuthRequest(id_token: idToken)
+        guard let data = try? JSONEncoder().encode(googleAuthRequest) else {
+            return .failure("Invalid Google token")
         }
-        return response?.message == "success"
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(
+            url: "/auth/google",
+            method: .POST,
+            body: data
+        )
+        
+        guard let data = responseData else {
+            return .failure("Google authentication failed")
+        }
+        
+        do {
+            let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
+            
+            if loginResponse.message == "success",
+               let accessToken = loginResponse.access_token,
+               let refreshToken = loginResponse.refresh_token {
+                // Store tokens in Keychain (minimal storage - no Google tokens stored)
+                KeychainHelper.set(accessToken, forKey: "accessToken")
+                KeychainHelper.set(refreshToken, forKey: "refreshToken")
+                
+                // Store token expiration
+                if let expiresIn = loginResponse.expires_in {
+                    let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
+                    KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
+                }
+                
+                // Fetch user data
+                await self.fetch()
+                
+                return .success
+            } else {
+                return .failure(loginResponse.message)
+            }
+        } catch {
+            print("Google auth decode error: \(error)")
+            return .failure("Google authentication failed")
+        }
+    }
+    
+    /// Send phone OTP for verification (profile updates)
+    func requestPhoneVerifyOTP(phoneNumber: String) async -> (Bool, String?) {
+        let phoneOTPRequest = PhoneOTPRequest(phone_number: phoneNumber, otp: nil, temp_id: nil)
+        guard let data = try? JSONEncoder().encode(phoneOTPRequest) else {
+            return (false, "Invalid phone number data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(
+            url: "/auth/otp/phone/verify",
+            method: .POST,
+            body: data
+        )
+        
+        guard let data = responseData else {
+            return (false, "Failed to send OTP. Please check your connection and try again.")
+        }
+        
+        if statusCode == 200 {
+            return (true, nil)
+        } else {
+            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorData["message"] as? String {
+                return (false, message)
+            }
+            return (false, "Failed to send OTP. Please check your phone number and try again.")
+        }
+    }
+    
+    /// Send phone OTP (login only - user must exist)
+    func requestPhoneOTP(phoneNumber: String) async -> (Bool, String?) {
+        let phoneOTPRequest = PhoneOTPRequest(phone_number: phoneNumber, otp: nil, temp_id: nil)
+        guard let data = try? JSONEncoder().encode(phoneOTPRequest) else {
+            return (false, "Invalid phone number data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(
+            url: "/auth/otp/phone",
+            method: .POST,
+            body: data
+        )
+        
+        guard let data = responseData else {
+            return (false, "Failed to send OTP. Please check your connection and try again.")
+        }
+        
+        // Parse response to get error message if any
+        if statusCode == 200 {
+            // Store phone number for OTP verification
+            KeychainHelper.set(phoneNumber, forKey: "phoneNumber")
+            return (true, nil)
+        } else {
+            // Try to parse error message
+            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorData["message"] as? String {
+                return (false, message)
+            }
+            return (false, "Failed to send OTP. Please check your phone number and try again.")
+        }
+    }
+    
+    /// Verify phone number OTP and update profile
+    func verifyPhoneUpdate(phoneNumber: String, otp: String) async -> (Bool, String?) {
+        guard let token = KeychainHelper.get("accessToken"),
+              let url = URL(string: NetworkManager.baseURL + "/v1/users/verify-phone") else {
+            return (false, "Invalid configuration")
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let body: [String: Any] = [
+            "phone_number": phoneNumber,
+            "otp": otp
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
+            return (false, "Invalid data")
+        }
+        request.httpBody = jsonData
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return (false, "Invalid response from server")
+            }
+            
+            if httpResponse.statusCode == 200 {
+                return (true, nil)
+            } else {
+                var errorMessage: String? = nil
+                if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = errorData["message"] as? String {
+                    errorMessage = message
+                } else {
+                    errorMessage = "Failed to verify phone number"
+                }
+                return (false, errorMessage)
+            }
+        } catch {
+            return (false, "Network error: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Phone authentication - sign-in only
+    /// User must already exist in the database with this phone number
+    func phoneAuth(phoneNumber: String, otp: String) async -> LoginResult {
+        let phoneAuthRequest = PhoneAuthRequest(phone_number: phoneNumber, otp: otp)
+        guard let data = try? JSONEncoder().encode(phoneAuthRequest) else {
+            return .failure("Invalid phone auth data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(
+            url: "/auth/phone",
+            method: .POST,
+            body: data
+        )
+        
+        guard let data = responseData else {
+            return .failure("Phone authentication failed")
+        }
+        
+        do {
+            let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
+            
+            if loginResponse.message == "success",
+               let accessToken = loginResponse.access_token,
+               let refreshToken = loginResponse.refresh_token {
+                // Store tokens in Keychain (minimal storage)
+                KeychainHelper.set(accessToken, forKey: "accessToken")
+                KeychainHelper.set(refreshToken, forKey: "refreshToken")
+                
+                // Store token expiration
+                if let expiresIn = loginResponse.expires_in {
+                    let expirationTime = Date().addingTimeInterval(TimeInterval(expiresIn))
+                    KeychainHelper.set(String(expirationTime.timeIntervalSince1970), forKey: "tokenExpirationTime")
+                }
+                
+                // Clear phone number from keychain after successful auth
+                KeychainHelper.remove("phoneNumber")
+                
+                // Fetch user data
+                await self.fetch()
+                
+                return .success
+            } else {
+                return .failure(loginResponse.message)
+            }
+        } catch {
+            print("Phone auth decode error: \(error)")
+            return .failure("Phone authentication failed")
+        }
+    }
+    
+    func signup(_ user: User) async -> SignupResult {
+        guard let data = user.toData() else {
+            return .failure("Invalid user data")
+        }
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/signup", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("Signup failed")
+        }
+        
+        do {
+            // Try to decode as new SignupResponse first
+            if let signupResponse = try? JSONDecoder().decode(SignupResponse.self, from: data) {
+                if signupResponse.requiresVerification {
+                    // Store user credentials for later use
+                    KeychainHelper.set(user.email, forKey: "email")
+                    KeychainHelper.set(user.password, forKey: "password")
+                    
+                    // Store temp_id for OTP verification
+                    if let tempId = signupResponse.temp_id {
+                        KeychainHelper.set(tempId, forKey: "temp_id")
+                    }
+                    
+                    // Send OTP after successful signup
+                    let otpSent = await requestOTP()
+                    if otpSent == true {
+                        return .requiresVerification
+                    } else {
+                        return .failure("Failed to send OTP")
+                    }
+                } else {
+                    // User already exists or other error
+                    return .failure(signupResponse.message)
+                }
+            } else {
+                // Fallback to old Response format
+                let response = try JSONDecoder().decode(Response.self, from: data)
+                if response.message == "success" {
+                    KeychainHelper.set(user.email, forKey: "email")
+                    KeychainHelper.set(user.password, forKey: "password")
+                    
+                    // For old backend, assume new users need verification
+                    return .requiresVerification
+                } else {
+                    return .failure(response.message)
+                }
+            }
+        } catch {
+            print("Signup decode error: \(error)")
+            print("Response data: \(String(data: data, encoding: .utf8) ?? "nil")")
+            return .failure("Signup failed")
+        }
     }
     
     func fetch() async {
         let user: User? = await NetworkManager.shared.get(url: "/auth/fetch")
         if let user {
             self.user = user
+            // Check for user change and clear caches if needed
+            await CacheManager.shared.onUserLogin()
         }
     }
     
@@ -93,19 +357,151 @@ class Creatist {
         guard let data = try? JSONEncoder().encode(otpRequest) else {
             return false
         }
-        return await NetworkManager.shared.post(url: "/auth/otp", body: data)
+        return await NetworkManager.shared.post<Bool>(url: "/auth/otp", body: data) ?? false
     }
     
-    func verifyOTP(_ otp: String) async -> Bool? {
+    func requestForgotPasswordOTP(email: String) async -> ForgotPasswordResult {
+        let forgotRequest = ForgotPasswordRequest(email: email)
+        guard let data = try? JSONEncoder().encode(forgotRequest) else {
+            return .failure("Invalid request data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/forgot-password", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("Request failed")
+        }
+        
+        do {
+            let response = try JSONDecoder().decode(ForgotPasswordResponse.self, from: data)
+            if response.requiresVerification {
+                // Store email and temp_id for password reset
+                KeychainHelper.set(email, forKey: "reset_email")
+                if let tempId = response.temp_id {
+                    KeychainHelper.set(tempId, forKey: "reset_temp_id")
+                }
+                
+                // OTP is already sent by the backend, no need to send again
+                return .success
+            } else {
+                return .failure(response.message)
+            }
+        } catch {
+            print("Forgot password decode error: \(error)")
+            // Try to decode as error response
+            if let errorResponse = try? JSONDecoder().decode(ForgotPasswordResponse.self, from: data) {
+                return .failure(errorResponse.message)
+            }
+            return .failure("Request failed")
+        }
+    }
+    
+    func resetPassword(newPassword: String, otp: String) async -> ResetPasswordResult {
+        let email = KeychainHelper.get("reset_email")
+        guard let email else {
+            return .failure("Email not found")
+        }
+        
+        let resetRequest = ResetPasswordRequest(email: email, new_password: newPassword, otp: otp)
+        guard let data = try? JSONEncoder().encode(resetRequest) else {
+            return .failure("Invalid request data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/reset-password", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("Reset failed")
+        }
+        
+        do {
+            let response = try JSONDecoder().decode(ResetPasswordResponse.self, from: data)
+            if response.success == true {
+                // Clear reset data
+                KeychainHelper.remove("reset_email")
+                KeychainHelper.remove("reset_temp_id")
+                return .success
+            } else {
+                return .failure(response.message)
+            }
+        } catch {
+            print("Reset password decode error: \(error)")
+            return .failure("Reset failed")
+        }
+    }
+    
+    func verifyOTP(_ otp: String) async -> OTPResult {
         let email = KeychainHelper.get("email")
         guard let email else {
-            return false
+            return .failure("Email not found")
         }
-        let otpRequest = OTPRequest(email_address: email, otp: otp)
+        
+        // Check if this is a new user registration (has temp_id)
+        let tempId = KeychainHelper.get("temp_id")
+        let otpRequest = OTPRequest(email_address: email, otp: otp, temp_id: tempId)
         guard let data = try? JSONEncoder().encode(otpRequest) else {
-            return false
+            return .failure("Invalid OTP data")
         }
-        return await NetworkManager.shared.post(url: "/auth/otp/verify", body: data)
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/otp/verify", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("OTP verification failed")
+        }
+        
+        do {
+            let response = try JSONDecoder().decode(Response.self, from: data)
+            if response.message == "success" || response.message == "Registration completed successfully! You can now login." {
+                // Clear temp_id after successful verification
+                KeychainHelper.remove("temp_id")
+                
+                // After successful OTP verification, automatically attempt login
+                let password = KeychainHelper.get("password")
+                if let password = password {
+                    let loginResult = await login(email: email, password: password)
+                    switch loginResult {
+                    case .success:
+                        return .success
+                    case .failure(let error):
+                        return .failure("OTP verified but login failed: \(error)")
+                    case .requiresVerification:
+                        return .failure("OTP verification failed")
+                    }
+                } else {
+                    return .failure("Password not found")
+                }
+            } else {
+                return .failure(response.message)
+            }
+        } catch {
+            print("OTP verification decode error: \(error)")
+            return .failure("OTP verification failed")
+        }
+    }
+    
+    func verifyOTP(email: String, otp: String) async -> OTPResult {
+        // For forgot password flow - verify OTP with email
+        let otpRequest = OTPRequest(email_address: email, otp: otp, temp_id: nil)
+        guard let data = try? JSONEncoder().encode(otpRequest) else {
+            return .failure("Invalid OTP data")
+        }
+        
+        let (responseData, statusCode) = await NetworkManager.shared.authRequest(url: "/auth/otp/verify", method: .POST, body: data)
+        
+        guard let data = responseData else {
+            return .failure("OTP verification failed")
+        }
+        
+        do {
+            let response = try JSONDecoder().decode(Response.self, from: data)
+            if response.message == "success" || response.message == "Registration completed successfully! You can now login." || response.message == "Email verified successfully" {
+                return .success
+            } else {
+                return .failure(response.message)
+            }
+        } catch {
+            print("OTP verification decode error: \(error)")
+            return .failure("OTP verification failed")
+        }
     }
     
     func fetchUsers(for genre: UserGenre) async -> [User] {
@@ -126,6 +522,30 @@ class Creatist {
         
         print("Fetched users for genre: \(genre.rawValue): nil")
         return []
+    }
+    
+    func searchUsers(query: String) async -> [User] {
+        // Fetch users from all genres and filter locally
+        var allUsers: [User] = []
+        
+        // Get users from each genre
+        for genre in UserGenre.allCases {
+            let users = await fetchUsers(for: genre)
+            allUsers.append(contentsOf: users)
+        }
+        
+        // Remove duplicates based on user ID
+        let uniqueUsers = Array(Set(allUsers.map { $0.id })).compactMap { userId in
+            allUsers.first { $0.id == userId }
+        }
+        
+        // Filter by search query
+        let filteredUsers = uniqueUsers.filter { user in
+            user.name.localizedCaseInsensitiveContains(query) ||
+            (user.username?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+        
+        return filteredUsers
     }
     
     func updateUserLocation(latitude: Double, longitude: Double) async -> Bool {
@@ -153,11 +573,24 @@ class Creatist {
     
     func followUser(userId: String) async -> Bool {
         let response: Response? = await NetworkManager.shared.put(url: "/v1/follow/\(userId)", body: nil)
-        return response?.message == "success"
+        let success = response?.message == "success"
+        
+        // Invalidate following feed cache since following list changed
+        if success {
+            CacheManager.shared.invalidateCache(for: .following)
+        }
+        
+        return success
     }
     
     func unfollowUser(userId: String) async -> Bool {
         let success = await NetworkManager.shared.delete(url: "/v1/unfollow/\(userId)", body: nil)
+        
+        // Invalidate following feed cache since following list changed
+        if success {
+            CacheManager.shared.invalidateCache(for: .following)
+        }
+        
         return success
     }
     
@@ -243,9 +676,7 @@ class Creatist {
             print("   Assignments Count: \(assignments.count)")
             
             // Step 1: Create the vision board
-            print("📤 Step 1: Creating vision board...")
             guard let currentUser = self.user else {
-                print("❌ No current user found for vision board creation")
                 return false
             }
             let visionBoardData: [String: Any] = [
@@ -263,18 +694,13 @@ class Creatist {
                 url: "/v1/visionboard/create",
                 body: requestData
             ) else {
-                print("❌ Failed to create vision board")
                 return false
             }
             let visionBoardId = visionBoardResponse.visionboard.id
-            print("✅ Step 1: Vision board created with ID: \(visionBoardId)")
-            print("   Response: \(String(data: try JSONEncoder().encode(visionBoardResponse), encoding: .utf8) ?? "nil")")
             
             // Step 2: Create genres for the vision board
-            print("📤 Step 2: Creating genres...")
             var createdGenres: [Genre] = []
             for (index, genreCreate) in genres.enumerated() {
-                print("   Creating genre \(index + 1)/\(genres.count): \(genreCreate.name)")
                 let genreData: [String: Any] = [
                     "name": genreCreate.name,
                     "description": genreCreate.description ?? "",
@@ -288,24 +714,19 @@ class Creatist {
                     url: "/v1/visionboard/\(visionBoardId)/genres",
                     body: genreRequestData
                 ) else {
-                    print("❌ Failed to create genre: \(genreCreate.name)")
                     return false
                 }
                 createdGenres.append(genreResponse.genre)
-                print("✅ Created genre: \(genreResponse.genre.name) with ID: \(genreResponse.genre.id)")
             }
             
             // Step 3: Create assignments for each genre
-            print("📤 Step 3: Creating assignments...")
             for (index, assignment) in assignments.enumerated() {
                 // Find the corresponding genre for this assignment
                 guard let genreIndex = createdGenres.firstIndex(where: { $0.name == assignment.genreName }) else {
-                    print("❌ No corresponding genre found for assignment \(index + 1) with genre: \(assignment.genreName)")
                     return false
                 }
                 
                 let genreId = createdGenres[genreIndex].id
-                print("   Creating assignment \(index + 1)/\(assignments.count) for user: \(assignment.userId) in genre: \(assignment.genreName) (ID: \(genreId))")
                 let assignmentData: [String: Any] = [
                     "genre_id": genreId.uuidString,
                     "user_id": assignment.userId.uuidString,
@@ -321,17 +742,13 @@ class Creatist {
                     url: "/v1/visionboard/assignments",
                     body: assignmentRequestData
                 ) else {
-                    print("❌ Failed to create assignment for user: \(assignment.userId)")
                     return false
                 }
-                print("✅ Created assignment: \(assignmentResponse.assignment.id)")
             }
             
-            print("🎉 Vision board creation completed successfully!")
             return true
             
         } catch {
-            print("❌ Error creating vision board: \(error)")
             return false
         }
     }
@@ -388,57 +805,44 @@ class Creatist {
     // Fetch all vision boards for the current user
     func fetchMyVisionBoards() async -> [VisionBoard] {
         guard let user = self.user else { 
-            print("❌ No current user found for fetching vision boards")
             return [] 
         }
-        print("🔍 Fetching vision boards created by user: \(user.id)")
         let url = "/v1/visionboard?created_by=\(user.id.uuidString)"
-        print("🌐 NetworkManager: GET \(url)")
         
         if let response: VisionBoardsResponse = await NetworkManager.shared.get(url: url) {
-            print("✅ Fetched \(response.visionboards.count) vision boards created by user")
             return response.visionboards
         }
-        print("❌ Failed to fetch vision boards created by user")
         return []
     }
 
     // Fetch all vision boards where the user is a partner (not creator)
     func fetchPartnerVisionBoards() async -> [VisionBoard] {
         guard let user = self.user else { 
-            print("❌ No current user found for fetching partner vision boards")
             return [] 
         }
-        print("🔍 Fetching vision boards where user is partner: \(user.id)")
         let url = "/v1/visionboard?partner_id=\(user.id.uuidString)"
-        print("🌐 NetworkManager: GET \(url)")
         
         if let response: VisionBoardsResponse = await NetworkManager.shared.get(url: url) {
-            print("✅ Fetched \(response.visionboards.count) partner vision boards")
             return response.visionboards
         }
-        print("❌ Failed to fetch partner vision boards")
         return []
     }
 
     // Fetch all users assigned to a specific vision board
     func fetchVisionBoardUsers(visionBoardId: UUID) async -> [User] {
-        print("🔍 Fetching users for vision board: \(visionBoardId)")
         let url = "/v1/visionboard/\(visionBoardId.uuidString.lowercased())/users"
-        print("🌐 NetworkManager: GET \(url)")
         
         if let response: VisionBoardUsersResponse = await NetworkManager.shared.get(url: url) {
-            print("✅ Fetched \(response.users.count) users for vision board")
             return response.users
         }
-        print("❌ Failed to fetch users for vision board")
         return []
     }
 
     // Update user profile via PATCH /v1/users
-    func updateUserProfile(_ user: User) async -> Bool {
+    // Returns (success: Bool, errorMessage: String?)
+    func updateUserProfile(_ user: User) async -> (Bool, String?) {
         guard let token = KeychainHelper.get("accessToken"),
-              let url = URL(string: NetworkManager.baseURL + "/v1/users") else { return false }
+              let url = URL(string: NetworkManager.baseURL + "/v1/users") else { return (false, "Invalid configuration") }
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -448,27 +852,44 @@ class Creatist {
             "name": user.name,
             "username": user.username,
             "description": user.description,
+            "phone_number": user.phoneNumber,
             "age": user.age,
+            "dob": user.dob,
             "genres": user.genres?.map { $0.rawValue },
             "payment_mode": user.paymentMode?.rawValue,
             "work_mode": user.workMode?.rawValue,
             "profile_image_url": user.profileImageUrl
         ]
         let filteredBody = body.compactMapValues { $0 }
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: filteredBody) else { return false }
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: filteredBody) else { return (false, "Invalid data") }
         request.httpBody = jsonData
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("Failed to update user: \(String(data: data, encoding: .utf8) ?? "nil")")
-                return false
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("Failed to update user: Invalid response")
+                return (false, "Invalid response from server")
             }
-            // Optionally update Creatist.shared.user with the new data here
-            return true
+            
+            if httpResponse.statusCode == 200 {
+                // Optionally update Creatist.shared.user with the new data here
+                return (true, nil)
+            } else {
+                // Try to parse error message
+                var errorMessage: String? = nil
+                if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = errorData["message"] as? String {
+                    errorMessage = message
+                    print("Failed to update user: \(message)")
+                } else {
+                    errorMessage = "Failed to update profile"
+                    print("Failed to update user: \(String(data: data, encoding: .utf8) ?? "nil")")
+                }
+                return (false, errorMessage)
+            }
         } catch {
             print("Error updating user: \(error)")
-            return false
+            return (false, "Network error: \(error.localizedDescription)")
         }
     }
 
@@ -567,25 +988,20 @@ class NotificationViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     func fetchNotifications() async {
-        print("[DEBUG] fetchNotifications called")
         let accessToken = KeychainHelper.get("accessToken")
-        print("[DEBUG] Access token: \(accessToken ?? "nil")")
         guard let token = accessToken, !token.isEmpty else {
-            print("[DEBUG] No access token found. User is not logged in.")
             await MainActor.run { self.errorMessage = "Not logged in. Please sign in again." }
             return
         }
         await MainActor.run { self.isLoading = true }
         defer { Task { await MainActor.run { self.isLoading = false } } }
-        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications") else { print("[DEBUG] Invalid URL"); return }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] Notifications API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("[DEBUG] HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
                 await MainActor.run { self.errorMessage = "Failed to fetch notifications." }
                 return
             }
@@ -606,17 +1022,14 @@ class NotificationViewModel: ObservableObject {
                 throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted.")
             }
             let notifications = try decoder.decode([NotificationItem].self, from: data)
-            print("[DEBUG] Parsed notifications: \(notifications)")
             await MainActor.run { self.notifications = notifications }
         } catch {
-            print("[DEBUG] Error fetching notifications: \(error)")
             await MainActor.run { self.errorMessage = error.localizedDescription }
         }
     }
     
     func respond(to notification: NotificationItem, response: String, comment: String) async {
-        print("[DEBUG] respond called for notification id: \(notification.id), response: \(response), comment: \(comment)")
-        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications/\(notification.id)/respond") else { print("[DEBUG] Invalid URL"); return }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/notifications/\(notification.id)/respond") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -627,9 +1040,7 @@ class NotificationViewModel: ObservableObject {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         do {
             let (data, httpResponse) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] Respond API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = httpResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("[DEBUG] HTTP error: \(httpResponse as? HTTPURLResponse)?.statusCode ?? -1)")
                 await MainActor.run { self.errorMessage = "Failed to respond to notification." }
                 return
             }
@@ -637,7 +1048,6 @@ class NotificationViewModel: ObservableObject {
                 await MainActor.run { self.notifications[idx].status = response }
             }
         } catch {
-            print("[DEBUG] Error responding to notification: \(error)")
             await MainActor.run { self.errorMessage = error.localizedDescription }
         }
     }
@@ -652,25 +1062,20 @@ class InvitationListViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
 
     func fetchInvitationsAndBoards() async {
-        print("[DEBUG] fetchInvitationsAndBoards called")
         let accessToken = KeychainHelper.get("accessToken")
-        print("[DEBUG] Access token: \(accessToken ?? "nil")")
         guard let token = accessToken, !token.isEmpty else {
-            print("[DEBUG] No access token found. User is not logged in.")
             await MainActor.run { self.errorMessage = "Not logged in. Please sign in again." }
             return
         }
         await MainActor.run { self.isLoading = true }
         defer { Task { await MainActor.run { self.isLoading = false } } }
-        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/invitations/user?status=pending") else { print("[DEBUG] Invalid URL"); return }
+        guard let url = URL(string: NetworkManager.baseURL + "/v1/visionboard/invitations/user?status=pending") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] Invitations API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("[DEBUG] HTTP error: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
                 await MainActor.run { self.errorMessage = "Failed to fetch invitations." }
                 return
             }
@@ -691,7 +1096,6 @@ class InvitationListViewModel: ObservableObject {
             }
             let result = try decoder.decode([String: [Invitation]].self, from: data)
             let invitations = result["invitations"] ?? []
-            print("[DEBUG] Parsed invitations: \(invitations)")
             await MainActor.run { self.invitations = invitations }
             // Fetch vision boards and sender info for each invitation
             for invitation in invitations {
@@ -703,7 +1107,6 @@ class InvitationListViewModel: ObservableObject {
                 }
             }
         } catch {
-            print("[DEBUG] Error fetching invitations: \(error)")
             await MainActor.run { self.errorMessage = error.localizedDescription }
         }
     }
@@ -722,7 +1125,6 @@ class InvitationListViewModel: ObservableObject {
             let user = try decoder.decode(User.self, from: data)
             await MainActor.run { self.senders[user.id] = user }
         } catch {
-            print("[DEBUG] Error fetching sender: \(error)")
         }
     }
 
@@ -734,7 +1136,6 @@ class InvitationListViewModel: ObservableObject {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] VisionBoard API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .custom { decoder in
@@ -755,7 +1156,6 @@ class InvitationListViewModel: ObservableObject {
             let vb = result.visionboard
             await MainActor.run { self.visionBoards[vb.id] = vb }
         } catch {
-            print("[DEBUG] Error fetching vision board: \(error)")
         }
     }
 
@@ -767,7 +1167,6 @@ class InvitationListViewModel: ObservableObject {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             let (data, response) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] GenreWithAssignments API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .custom { decoder in
@@ -789,7 +1188,6 @@ class InvitationListViewModel: ObservableObject {
             await MainActor.run { self.genres[genre.id] = genre }
             await fetchVisionBoard(visionboardId: genre.visionboardId, token: token)
         } catch {
-            print("[DEBUG] Error fetching genre/vision board: \(error)")
         }
     }
 
@@ -806,14 +1204,12 @@ class InvitationListViewModel: ObservableObject {
         }
         do {
             let (data, httpResponse) = try await NetworkManager.shared.authorizedRequest(request)
-            print("[DEBUG] Invitation respond API response: \(String(data: data, encoding: .utf8) ?? "nil")")
             guard let httpResponse = httpResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
             // Update status locally
             if let idx = self.invitations.firstIndex(where: { $0.id == invitation.id }) {
                 await MainActor.run { self.invitations[idx].status = response.lowercased() }
             }
         } catch {
-            print("[DEBUG] Error responding to invitation: \(error)")
         }
     }
 }
@@ -861,12 +1257,10 @@ extension Creatist {
                     let assignmentsResult = try decoder.decode(GenreWithAssignmentsResponse.self, from: assignmentsData)
                     genresWithAssignments.append(assignmentsResult.genre)
                 } catch {
-                    print("[DEBUG] Error fetching assignments for genre \(genre.id): \(error)")
                 }
             }
             return genresWithAssignments
         } catch {
-            print("[DEBUG] Error fetching genres/assignments: \(error)")
             return []
         }
     }
@@ -887,7 +1281,6 @@ extension Creatist {
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return false }
             return true
         } catch {
-            print("[DEBUG] Error starting vision: \(error)")
             return false
         }
     }
@@ -923,7 +1316,6 @@ extension Creatist {
             // (Assume backend sends invite on assignment creation)
             return true
         } catch {
-            print("[DEBUG] Error adding assignment: \(error)")
             return false
         }
     }
@@ -957,7 +1349,6 @@ extension Creatist {
             let result = try decoder.decode(GenresResponse.self, from: data)
             return result.visionboard.genres.map { $0.name }
         } catch {
-            print("[DEBUG] Error fetching genres for vision board: \(error)")
             return []
         }
     }
@@ -996,7 +1387,6 @@ extension Creatist {
                 return PostCollaboratorCreate(user_id: collaborator.user_id, role: mappedRole)
             }
         } catch {
-            print("[DEBUG] Error fetching collaborators for visionboard: \(error)")
             return []
         }
     }
@@ -1070,7 +1460,7 @@ extension Creatist {
             print("[Creatist] Draft media file is too large (\(data.count) bytes). Max allowed is \(maxSize) bytes.")
             return nil
         }
-        let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
+        let supabaseUrl = EnvironmentConfig.shared.supabaseURL
         let supabaseBucket = "drafts"
         let ext = (mediaType == "video") ? ".mov" : ".jpg"
         let fileName = UUID().uuidString + ext
@@ -1079,8 +1469,7 @@ extension Creatist {
         guard let uploadUrl = URL(string: uploadUrlString) else { return nil }
         var request = URLRequest(url: uploadUrl)
         request.httpMethod = "PUT"
-        let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk"
-        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(EnvironmentConfig.shared.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(mediaType == "video" ? "video/quicktime" : "image/jpeg", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         do {
@@ -1105,7 +1494,7 @@ extension Creatist {
             print("[Creatist] Post media file is too large (\(data.count) bytes). Max allowed is \(maxSize) bytes.")
             return nil
         }
-        let supabaseUrl = "https://wkmribpqhgdpklwovrov.supabase.co"
+        let supabaseUrl = EnvironmentConfig.shared.supabaseURL
         let ext = (mediaType == "video") ? ".mov" : ".jpg"
         let fileName = UUID().uuidString + ext
         let uploadPath = "posts/\(userId.uuidString)/\(postId.uuidString)/\(fileName)"
@@ -1113,8 +1502,7 @@ extension Creatist {
         guard let uploadUrl = URL(string: uploadUrlString) else { return nil }
         var request = URLRequest(url: uploadUrl)
         request.httpMethod = "PUT"
-        let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrbXJpYnBxaGdkcGtsd292cm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MDY1OTksImV4cCI6MjA2NzI4MjU5OX0.N2wWfCSbjHMjHgA-stYesbcC8GZMATXug1rFew0qQOk"
-        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(EnvironmentConfig.shared.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(mediaType == "video" ? "video/quicktime" : "image/jpeg", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         do {
@@ -1157,7 +1545,7 @@ extension Creatist {
 
     // Following feed with pagination
     func fetchFollowingFeed(limit: Int = 10, cursor: String? = nil) async -> PaginatedPosts {
-        var url = "/posts/feed?limit=\(limit)"
+        var url = "/posts/following?limit=\(limit)"
         
         if let cursor = cursor {
             // Send cursor as JSON object in URL parameter (URL-encoded)
@@ -1218,7 +1606,20 @@ extension Creatist {
 
     // Fetch all posts for a user
     func fetchUserPosts(userId: UUID) async -> [PostWithDetails] {
+        // Check cache first
+        if CacheManager.shared.isUserPostsCacheValid(for: userId),
+           let cachedPosts = CacheManager.shared.getCachedUserPosts(for: userId) {
+            return cachedPosts
+        }
+        
+        // Fetch from API if cache is invalid or empty
         let url = "/posts/user/\(userId.uuidString)"
-        return await NetworkManager.shared.get(url: url) ?? []
+        if let posts: [PostWithDetails] = await NetworkManager.shared.get(url: url) {
+            // Cache the fetched posts
+            CacheManager.shared.cacheUserPosts(posts, for: userId)
+            return posts
+        }
+        
+        return []
     }
 }

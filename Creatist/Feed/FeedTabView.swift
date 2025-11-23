@@ -9,11 +9,11 @@ struct FeedView: View {
     @State private var isLoadingMore = false
     @State private var nextCursor: String? = nil
     @State private var errorMessage: String? = nil
-    @State private var userCache: [UUID: User] = [:]
     @State private var selectedPost: PostWithDetails? = nil
     @State private var showChatList = false
+    @StateObject private var cacheManager = CacheManager.shared
     let segments = ["Trending", "Following"]
-    let pageSize = 10
+    let pageSize = 20
 
     var body: some View {
         NavigationStack {
@@ -29,12 +29,18 @@ struct FeedView: View {
                         }
                     }
                     .pickerStyle(SegmentedPickerStyle())
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 0)
                 }
-                .padding(.vertical, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 4)
                 if isLoading && posts.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if selectedSegment == 0 {
+                        TrendingCollectionSkeletonView()
+                            .padding(.horizontal, 12)
+                    } else {
+                        FeedLoadingView(isTrending: false)
+                    }
                 } else if let errorMessage = errorMessage {
                     Text(errorMessage).foregroundColor(.red)
                 } else {
@@ -52,19 +58,20 @@ struct FeedView: View {
                                     }
                                 }
                             )
+                            .padding(.horizontal, 12)
                             NavigationLink(
                                 destination: Group {
                                     if let post = selectedPost {
                                         ScrollView {
                                             VStack(alignment: .leading, spacing: 24) {
                                                 // Selected post detail at the top
-                                                PostCellView(post: post, userCache: $userCache, fetchUser: fetchUser)
+                                                PostCellView(post: post)
                                                     .padding(.bottom, 16)
                                                 // All trending posts below, with the selected post first, then the rest
                                                 let orderedPosts = [post] + posts.filter { $0.id != post.id }
                                                 ForEach(orderedPosts, id: \.id) { trendingPost in
                                                     if trendingPost.id != post.id {
-                                                        PostCellView(post: trendingPost, userCache: $userCache, fetchUser: fetchUser)
+                                                        PostCellView(post: trendingPost)
                                                             .padding(.vertical, 8)
                                                     }
                                                 }
@@ -85,22 +92,22 @@ struct FeedView: View {
                         VStack(spacing: 0) {
                             List {
                                 ForEach(posts, id: \.id) { post in
-                                    PostCellView(
-                                        post: post,
-                                        userCache: $userCache,
-                                        fetchUser: fetchUser
-                                    )
+                                    PostCellView(post: post)
                                     .onAppear {
                                         checkIfShouldLoadMore(post: post)
                                     }
                                 }
                                 if isLoadingMore {
-                                    HStack { Spacer(); ProgressView(); Spacer() }
+                                    HStack { Spacer(); 
+                                        SkeletonView(width: 20, height: 20, cornerRadius: 10)
+                                        Spacer() 
+                                    }
                                 }
                             }
                             .listStyle(PlainListStyle())
                             .refreshable { await reloadPosts() }
                         }
+                        .padding(.horizontal, 2)
                         .padding(.top, 8)
                     }
                 }
@@ -125,23 +132,36 @@ struct FeedView: View {
         isLoadingMore = false
         errorMessage = nil
         nextCursor = nil
-        posts = []
-        await loadPosts(reset: true)
-        isLoading = false
+        
+        // Try to load from cache first
+        let feedType: FeedType = selectedSegment == 0 ? .trending : .following
+        if cacheManager.isCacheValid(for: feedType) {
+            posts = cacheManager.getCachedPosts(for: feedType)
+            isLoading = false
+        } else {
+            posts = []
+            await loadPosts(reset: true)
+            isLoading = false
+        }
     }
 
     func loadPosts(reset: Bool = false) async {
         do {
             let result: PaginatedPosts
+            let feedType: FeedType = selectedSegment == 0 ? .trending : .following
+            
             if selectedSegment == 0 {
                 result = await Creatist.shared.fetchTrendingPosts(limit: pageSize, cursor: reset ? nil : nextCursor)
             } else {
                 result = await Creatist.shared.fetchFollowingFeed(limit: pageSize, cursor: reset ? nil : nextCursor)
             }
+            
             if reset {
                 posts = result.posts
+                cacheManager.cachePosts(result.posts, for: feedType, append: false)
             } else {
                 posts.append(contentsOf: result.posts)
+                cacheManager.cachePosts(result.posts, for: feedType, append: true)
             }
             nextCursor = result.nextCursor
         } catch {
@@ -164,28 +184,11 @@ struct FeedView: View {
         }
     }
 
-    func fetchUser(userId: UUID, completion: @escaping (User?) -> Void) {
-        if let cached = userCache[userId] {
-            completion(cached)
-            return
-        }
-        Task {
-            if let user = await Creatist.shared.fetchUserById(userId: userId) {
-                await MainActor.run {
-                    userCache[userId] = user
-                    completion(user)
-                }
-            } else {
-                completion(nil)
-            }
-        }
-    }
 }
 
 struct PostCellView: View {
     let post: PostWithDetails
-    @Binding var userCache: [UUID: User]
-    var fetchUser: (UUID, @escaping (User?) -> Void) -> Void
+    @StateObject private var cacheManager = CacheManager.shared
     @State private var author: User? = nil
     @State private var collaborators: [User] = []
     @State private var isLiked: Bool = false
@@ -204,7 +207,7 @@ struct PostCellView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: -6) {
                         ForEach(post.collaborators, id: \.userId) { collaborator in
-                            if let user = userCache[collaborator.userId] {
+                            if let user = cacheManager.getUser(collaborator.userId) {
                                 if let url = user.profileImageUrl, let imgUrl = URL(string: url) {
                                     AsyncImage(url: imgUrl) { phase in
                                         if let image = phase.image {
@@ -223,12 +226,12 @@ struct PostCellView: View {
                                 }
                             } else {
                                 Color.gray.frame(width: 36, height: 36).clipShape(Circle())
-                                    .onAppear { fetchUser(collaborator.userId) { _ in } }
+                                    .onAppear { fetchUser(collaborator.userId) }
                             }
                         }
                     }
                     // Names together
-                    let names = post.collaborators.compactMap { userCache[$0.userId]?.name }.joined(separator: ", ")
+                    let names = post.collaborators.compactMap { cacheManager.getUser($0.userId)?.name }.joined(separator: ", ")
                     if !names.isEmpty {
                         Text(names)
                             .font(.subheadline).bold()
@@ -246,7 +249,7 @@ struct PostCellView: View {
                         UserImageAndName(user: user)
                     } else {
                         Color.gray.frame(width: 36, height: 36).clipShape(Circle())
-                            .onAppear { fetchUser(post.userId) { _ in } }
+                            .onAppear { fetchUser(post.userId) }
                     }
                 }
             }
@@ -335,19 +338,29 @@ struct PostCellView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.systemBackground))
         .onAppear {
-            if author == nil {
-                fetchUser(post.userId) { user in
-                    self.author = user
-                }
+            // Try to get author from cache first
+            if let cachedAuthor = cacheManager.getUser(post.userId) {
+                author = cachedAuthor
+            } else if author == nil {
+                fetchUser(post.userId)
             }
-            if post.isCollaborative && collaborators.isEmpty {
-                let ids = post.collaborators.map { $0.userId }
-                for id in ids {
-                    fetchUser(id) { user in
-                        if let user = user, !collaborators.contains(where: { $0.id == user.id }) {
-                            collaborators.append(user)
-                        }
-                    }
+            
+            // Try to get collaborators from cache first
+            if post.isCollaborative && !post.collaborators.isEmpty {
+                let cachedCollaborators = post.collaborators.compactMap { collaborator in
+                    cacheManager.getUser(collaborator.userId)
+                }
+                if !cachedCollaborators.isEmpty {
+                    collaborators = cachedCollaborators
+                }
+                
+                // Fetch any missing collaborators
+                let missingIds = post.collaborators.filter { collaborator in
+                    !collaborators.contains { $0.id == collaborator.userId }
+                }.map { $0.userId }
+                
+                for id in missingIds {
+                    fetchUser(id)
                 }
             }
             // Initialize like state
@@ -406,6 +419,47 @@ struct PostCellView: View {
             }
         }
     }
+    
+    func fetchUser(_ userId: UUID) {
+        print("🔍 Fetching user: \(userId)")
+        
+        // Check cache first
+        if let cachedUser = cacheManager.getUser(userId) {
+            print("✅ Found user in cache: \(cachedUser.name)")
+            if post.userId == userId {
+                author = cachedUser
+                print("✅ Set author: \(cachedUser.name)")
+            } else if post.isCollaborative && post.collaborators.contains(where: { $0.userId == userId }) {
+                if !collaborators.contains(where: { $0.id == userId }) {
+                    collaborators.append(cachedUser)
+                    print("✅ Added collaborator: \(cachedUser.name)")
+                }
+            }
+            return
+        }
+        
+        print("🌐 User not in cache, fetching from network...")
+        // Fetch from network if not in cache
+        Task {
+            if let user = await Creatist.shared.fetchUserById(userId: userId) {
+                print("✅ Fetched user from network: \(user.name), profileImageUrl: \(user.profileImageUrl ?? "nil")")
+                await MainActor.run {
+                    cacheManager.cacheUser(user)
+                    if post.userId == userId {
+                        author = user
+                        print("✅ Set author from network: \(user.name)")
+                    } else if post.isCollaborative && post.collaborators.contains(where: { $0.userId == userId }) {
+                        if !collaborators.contains(where: { $0.id == userId }) {
+                            collaborators.append(user)
+                            print("✅ Added collaborator from network: \(user.name)")
+                        }
+                    }
+                }
+            } else {
+                print("❌ Failed to fetch user: \(userId)")
+            }
+        }
+    }
 }
 
 struct UserImageAndName: View {
@@ -446,36 +500,20 @@ struct ShareSheet: UIViewControllerRepresentable {
 // Add ChatListView at the end of the file
 struct ChatListView: View {
     @State private var searchText: String = ""
-    @State private var isSearching: Bool = false
     @State private var showNewChat = false
-    // Remove dummy chats, use an empty array for now
-    let chats: [(id: UUID, name: String, lastMessage: String, unread: Int)] = []
+    // Add dummy data to make search bar visible
+    let chats: [(id: UUID, name: String, lastMessage: String, unread: Int)] = [
+        (UUID(), "John Doe", "Hey, how are you?", 2),
+        (UUID(), "Jane Smith", "Thanks for the help!", 0),
+        (UUID(), "Mike Johnson", "See you tomorrow", 1)
+    ]
     var filteredChats: [(id: UUID, name: String, lastMessage: String, unread: Int)] {
         if searchText.isEmpty { return chats }
         return chats.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.lastMessage.localizedCaseInsensitiveContains(searchText) }
     }
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Chats")
-                    .font(.largeTitle).bold()
-                Spacer()
-                Button(action: { showNewChat = true }) {
-                    Image(systemName: "plus")
-                        .font(.title2)
-                        .padding(8)
-                        .background(Circle().fill(Color.accentColor))
-                        .foregroundColor(.white)
-                }
-            }
-            .padding([.top, .horizontal])
-            // Native search bar
-            SearchBar(text: $searchText, isEditing: $isSearching)
-                .padding(.horizontal)
-                .padding(.bottom, 4)
-            Divider()
+        NavigationStack {
             if filteredChats.isEmpty {
-                Spacer()
                 VStack(spacing: 16) {
                     Image(systemName: "bubble.left.and.bubble.right")
                         .resizable()
@@ -490,7 +528,7 @@ struct ChatListView: View {
                         .foregroundColor(.secondary)
                 }
                 .padding()
-                Spacer()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     ForEach(filteredChats, id: \ .id) { chat in
@@ -513,6 +551,16 @@ struct ChatListView: View {
                     }
                 }
                 .listStyle(PlainListStyle())
+                .searchable(text: $searchText, prompt: "Search chats")
+            }
+        }
+        .navigationTitle("Chats")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: { showNewChat = true }) {
+                    Image(systemName: "plus")
+                }
             }
         }
         .sheet(isPresented: $showNewChat) {
@@ -531,47 +579,3 @@ struct ChatListView: View {
         }
     }
 }
-
-// UIKit native search bar wrapper
-import UIKit
-struct SearchBar: UIViewRepresentable {
-    @Binding var text: String
-    @Binding var isEditing: Bool
-    class Coordinator: NSObject, UISearchBarDelegate {
-        @Binding var text: String
-        @Binding var isEditing: Bool
-        init(text: Binding<String>, isEditing: Binding<Bool>) {
-            _text = text
-            _isEditing = isEditing
-        }
-        func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-            text = searchText
-        }
-        func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
-            isEditing = true
-        }
-        func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
-            isEditing = false
-        }
-        func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
-            searchBar.resignFirstResponder()
-            isEditing = false
-            text = ""
-        }
-    }
-    func makeCoordinator() -> Coordinator {
-        return Coordinator(text: $text, isEditing: $isEditing)
-    }
-    func makeUIView(context: Context) -> UISearchBar {
-        let searchBar = UISearchBar(frame: .zero)
-        searchBar.delegate = context.coordinator
-        searchBar.placeholder = "Search"
-        searchBar.showsCancelButton = true
-        searchBar.autocapitalizationType = .none
-        return searchBar
-    }
-    func updateUIView(_ uiView: UISearchBar, context: Context) {
-        uiView.text = text
-        uiView.showsCancelButton = isEditing
-    }
-} 

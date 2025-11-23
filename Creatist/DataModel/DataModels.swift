@@ -120,9 +120,11 @@ struct User: Codable, Sendable {
     var name: String
     var username: String?
     var email: String
+    var phoneNumber: String?
     var password: String
     var profileImageUrl: String?
     var age: Int?
+    var dob: String?
     var genres: [UserGenre]?
     var paymentMode: PaymentMode?
     var workMode: WorkMode?
@@ -139,9 +141,11 @@ struct User: Codable, Sendable {
         case name
         case username
         case email
+        case phoneNumber = "phone_number"
         case password
         case profileImageUrl = "profile_image_url"
         case age
+        case dob
         case genres
         case paymentMode = "payment_mode"
         case workMode = "work_mode"
@@ -182,6 +186,60 @@ struct LoginResponse: Codable {
     let refresh_token: String?
     let token_type: String?
     let expires_in: Int?
+    let is_new_user: Bool?
+}
+
+struct GoogleAuthRequest: Codable {
+    let id_token: String
+}
+
+struct PhoneAuthRequest: Codable {
+    let phone_number: String
+    let otp: String
+}
+
+struct PhoneOTPRequest: Codable {
+    let phone_number: String
+    let otp: String?
+    let temp_id: String?
+}
+
+struct PhoneOTPResponse: Codable {
+    let message: String
+    let phone_number: String?
+}
+
+struct SignupResponse: Codable {
+    let message: String
+    let requiresVerification: Bool
+    let temp_id: String?
+}
+
+enum LoginResult {
+    case success
+    case failure(String)
+    case requiresVerification
+}
+
+enum SignupResult {
+    case success
+    case failure(String)
+    case requiresVerification
+}
+
+enum OTPResult {
+    case success
+    case failure(String)
+}
+
+enum ForgotPasswordResult {
+    case success
+    case failure(String)
+}
+
+enum ResetPasswordResult {
+    case success
+    case failure(String)
 }
 
 struct Response: Codable {
@@ -234,6 +292,28 @@ struct Follower: Codable, Sendable {
 struct OTPRequest: Codable, Sendable {
     var email_address: String
     var otp: String?
+    var temp_id: String?
+}
+
+struct ForgotPasswordRequest: Codable, Sendable {
+    var email: String
+}
+
+struct ResetPasswordRequest: Codable, Sendable {
+    var email: String
+    var new_password: String
+    var otp: String
+}
+
+struct ForgotPasswordResponse: Codable {
+    let message: String
+    let requiresVerification: Bool
+    let temp_id: String?
+}
+
+struct ResetPasswordResponse: Codable {
+    let message: String
+    let success: Bool?
 }
 
 struct UsersResponse: Codable {

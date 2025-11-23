@@ -15,6 +15,7 @@ struct VisionBoardView: View {
     @StateObject private var notificationVM = NotificationViewModel()
     @StateObject private var invitationVM = InvitationListViewModel()
     @State private var selectedBoard: VisionBoard? = nil
+    @StateObject private var cacheManager = CacheManager.shared
 
     var body: some View {
         NavigationView {
@@ -86,10 +87,19 @@ struct VisionBoardView: View {
                 InvitationPanelView(viewModel: invitationVM)
             }
             .onAppear {
+                // Load cached data for both tabs immediately
+                loadCachedDataForTab(0) // My Projects
+                loadCachedDataForTab(1) // Partner Projects
+                
+                // Then fetch fresh data
                 reloadBoards()
+                
                 NotificationCenter.default.addObserver(forName: .didRespondToInvitation, object: nil, queue: .main) { _ in
                     reloadBoards()
                 }
+            }
+            .onChange(of: selectedTab) { newTab in
+                loadCachedDataForTab(newTab)
             }
             .onDisappear {
                 NotificationCenter.default.removeObserver(self, name: .didRespondToInvitation, object: nil)
@@ -100,16 +110,59 @@ struct VisionBoardView: View {
     func reloadBoards() {
         print("🔄 VisionBoardView: Reloading boards...")
         isLoading = true
+        
+        // Load cached data for current tab first
+        loadCachedDataForTab(selectedTab)
+        
+        // Fetch fresh data in background
         Task {
-            print("🔄 VisionBoardView: Fetching my vision boards...")
+            print("🔄 VisionBoardView: Fetching fresh data...")
             let my = await Creatist.shared.fetchMyVisionBoards()
-            print("🔄 VisionBoardView: Fetching partner vision boards...")
             let partner = await Creatist.shared.fetchPartnerVisionBoards()
+            
             await MainActor.run {
                 print("🔄 VisionBoardView: Updating UI with \(my.count) my boards and \(partner.count) partner boards")
                 self.myBoards = my
                 self.partnerBoards = partner
                 self.isLoading = false
+                
+                // Cache the fresh data
+                cacheManager.cacheMyVisionBoards(my)
+                cacheManager.cachePartnerVisionBoards(partner)
+            }
+        }
+    }
+    
+    func loadCachedDataForTab(_ tab: Int) {
+        print("🔄 VisionBoardView: Loading cached data for tab \(tab) (0=My, 1=Partner)")
+        
+        if tab == 0 {
+            // My Projects tab
+            let cachedMyBoards = cacheManager.getMyVisionBoards()
+            print("📊 VisionBoardView: Cache check - My Projects: \(cachedMyBoards.count) boards, Current: \(myBoards.count)")
+            if !cachedMyBoards.isEmpty {
+                print("✅ VisionBoardView: Loading My Projects from cache - \(cachedMyBoards.count) boards")
+                myBoards = cachedMyBoards
+                isLoading = false
+            } else if myBoards.isEmpty {
+                print("⚠️ VisionBoardView: No cached My Projects data available and no current data")
+                // Only show loading if we don't have any data at all
+            } else {
+                print("ℹ️ VisionBoardView: Using existing My Projects data - \(myBoards.count) boards")
+            }
+        } else {
+            // Partner Projects tab
+            let cachedPartnerBoards = cacheManager.getPartnerVisionBoards()
+            print("📊 VisionBoardView: Cache check - Partner Projects: \(cachedPartnerBoards.count) boards, Current: \(partnerBoards.count)")
+            if !cachedPartnerBoards.isEmpty {
+                print("✅ VisionBoardView: Loading Partner Projects from cache - \(cachedPartnerBoards.count) boards")
+                partnerBoards = cachedPartnerBoards
+                isLoading = false
+            } else if partnerBoards.isEmpty {
+                print("⚠️ VisionBoardView: No cached Partner Projects data available and no current data")
+                // Only show loading if we don't have any data at all
+            } else {
+                print("ℹ️ VisionBoardView: Using existing Partner Projects data - \(partnerBoards.count) boards")
             }
         }
     }

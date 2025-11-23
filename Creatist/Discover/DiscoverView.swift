@@ -2,6 +2,9 @@ import SwiftUI
 
 struct DiscoverView: View {
     @State private var searchText: String = ""
+    @State private var searchResults: [User] = []
+    @State private var isSearching: Bool = false
+    @StateObject private var viewModel = UserListViewModel()
     let genres = UserGenre.allCases
     let columns = [GridItem(.flexible()), GridItem(.flexible())]
     @State private var selectedGenre: UserGenre? = nil
@@ -17,22 +20,67 @@ struct DiscoverView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(filteredGenres, id: \ .self) { genre in
-                        Button(action: {
-                            print("Genre tapped: \(genre.rawValue)")
-                            selectedGenre = genre
-                        }) {
-                            GenreCell(genre: genre)
+                if !searchText.isEmpty {
+                    // Show search results
+                    LazyVStack(spacing: 12) {
+                        if isSearching {
+                            ProgressView("Searching...")
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .padding()
+                        } else if searchResults.isEmpty {
+                            VStack(spacing: 16) {
+                                Image(systemName: "magnifyingglass")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 48, height: 48)
+                                    .foregroundColor(.secondary)
+                                Text("No users found")
+                                    .font(.title3).bold()
+                                    .foregroundColor(.primary)
+                                Text("Try searching with a different name")
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding()
+                        } else {
+                            ForEach(searchResults, id: \.id) { user in
+                                NavigationLink(destination: UserProfileView(userId: user.id, viewModel: viewModel)) {
+                                    UserSearchResultRow(user: user)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
+                    .padding(.horizontal)
+                } else {
+                    // Show genre grid
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(filteredGenres, id: \.self) { genre in
+                            Button(action: {
+                                print("Genre tapped: \(genre.rawValue)")
+                                selectedGenre = genre
+                            }) {
+                                GenreCell(genre: genre)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    .padding()
                 }
-                .padding()
             }
             .navigationTitle("Discover")
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search Editor, Composer and many more")
+            .onChange(of: searchText) { newValue in
+                if !newValue.isEmpty {
+                    Task {
+                        await performSearch(query: newValue)
+                    }
+                } else {
+                    searchResults = []
+                    isSearching = false
+                }
+            }
             .background(
                 NavigationLink(
                     destination: Group {
@@ -47,6 +95,134 @@ struct DiscoverView: View {
                 ) { EmptyView() }
                 .hidden()
             )
+        }
+    }
+    
+    private func performSearch(query: String) async {
+        guard !query.isEmpty else { return }
+        
+        print("🔍 DiscoverView: Starting search for '\(query)'")
+        isSearching = true
+        searchResults = await Creatist.shared.searchUsers(query: query)
+        print("🔍 DiscoverView: Search completed, found \(searchResults.count) users")
+        isSearching = false
+    }
+}
+
+struct UserSearchResultRow: View {
+    let user: User
+    @State private var isFollowing: Bool = false
+    @State private var isLoadingFollow: Bool = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Profile image
+            if let url = user.profileImageUrl, let imgUrl = URL(string: url) {
+                AsyncImage(url: imgUrl) { phase in
+                    if let image = phase.image {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else if phase.error != nil {
+                        Image(systemName: "person.crop.circle.fill")
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .foregroundColor(.gray)
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .frame(width: 50, height: 50)
+                .clipShape(Circle())
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.gray)
+            }
+            
+            // User info
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(user.name)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    if let rating = user.rating, rating > 0 {
+                        HStack(spacing: 2) {
+                            Image(systemName: "star.fill")
+                                .foregroundColor(.yellow)
+                                .font(.caption)
+                            Text(String(format: "%.1f", rating))
+                                .foregroundColor(.primary)
+                                .font(.caption)
+                        }
+                    }
+                }
+                
+                if let genres = user.genres, !genres.isEmpty {
+                    Text(genres.map { $0.rawValue.capitalized }.joined(separator: ", "))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                
+                // Location
+                let locationText = [user.city, user.country].compactMap { $0 }.joined(separator: ", ")
+                if !locationText.isEmpty {
+                    Text(locationText)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            // Follow button
+            Button(action: {
+                Task {
+                    isLoadingFollow = true
+                    if isFollowing {
+                        let success = await Creatist.shared.unfollowUser(userId: user.id.uuidString)
+                        if success {
+                            isFollowing = false
+                        }
+                    } else {
+                        let success = await Creatist.shared.followUser(userId: user.id.uuidString)
+                        if success {
+                            isFollowing = true
+                        }
+                    }
+                    isLoadingFollow = false
+                }
+            }) {
+                Group {
+                    if isLoadingFollow {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .foregroundColor(.white)
+                    } else {
+                        Text(isFollowing ? "Following" : "Follow")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(isFollowing ? .secondary : .white)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(isFollowing ? Color(.systemGray5) : Color.accentColor)
+                )
+            }
+            .disabled(isLoadingFollow)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .onAppear {
+            // Initialize follow state based on user's isFollowing property
+            isFollowing = user.isFollowing ?? false
         }
     }
 }

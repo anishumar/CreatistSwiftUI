@@ -13,4 +13,14 @@ struct TrendingCollectionView: UIViewControllerRepresentable {
         uiViewController.posts = posts
         uiViewController.collectionView.reloadData()
     }
+}
+
+struct TrendingCollectionSkeletonView: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> TrendingCollectionSkeletonViewController {
+        TrendingCollectionSkeletonViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: TrendingCollectionSkeletonViewController, context: Context) {
+        // No updates needed for skeleton view
+    }
 } 
