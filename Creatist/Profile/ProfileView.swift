@@ -437,6 +437,7 @@ struct CreateSelfPostSheet: View {
     @State private var isPosting = false
     @State private var postError: String? = nil
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) var colorScheme
     // Load media data when selection changes
     @MainActor
     func loadMediaData(from items: [PhotosPickerItem]) async {
@@ -460,44 +461,175 @@ struct CreateSelfPostSheet: View {
     var body: some View {
         NavigationView {
             VStack(alignment: .leading, spacing: 16) {
-                PhotosPicker(selection: $selectedMedia, maxSelectionCount: 10, matching: .any(of: [.images, .videos])) {
-                    HStack {
-                        Image(systemName: "photo.on.rectangle.angled")
-                        Text("Select Media")
+                // Media Preview
+                if !mediaData.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(Array(mediaData.enumerated()), id: \.offset) { element in
+                                let idx = element.offset
+                                let item = element.element
+                                if item.type == "video" {
+                                    Image(systemName: "video.fill")
+                                        .resizable().aspectRatio(contentMode: .fit)
+                                        .frame(width: 160, height: 160)
+                                        .foregroundColor(.accentColor)
+                                } else if let uiImage = UIImage(data: item.data) {
+                                    Image(uiImage: uiImage)
+                                        .resizable().aspectRatio(contentMode: .fill)
+                                        .frame(width: 160, height: 160)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                            }
+                        }
+                        .padding(.vertical, 8)
                     }
-                    .padding(8)
-                    .background(Color.accentColor.opacity(0.1))
-                    .cornerRadius(8)
+                }
+                
+                // Upload Media Container with Liquid Glass UI
+                PhotosPicker(selection: $selectedMedia, maxSelectionCount: 10, matching: .any(of: [.images, .videos])) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Top Left: Upload Media Label with Icon
+                        HStack(spacing: 8) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(colorScheme == .dark ? Color.blue.opacity(0.8) : Color.blue.opacity(0.7))
+                            Text("Upload Media")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(colorScheme == .dark ? Color.blue.opacity(0.6) : Color.blue.opacity(0.7))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                                .foregroundColor(colorScheme == .dark ? Color.blue.opacity(0.5) : Color.blue.opacity(0.4))
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
+                        
+                        // Main Drop Zone Area
+                        VStack(spacing: 12) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.9) : Color.primary.opacity(0.8))
+                            Text("Upload Media")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.9) : Color.primary.opacity(0.8))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 140)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.03))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                                        .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.3) : Color.secondary.opacity(0.4))
+                                )
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                        .padding(.bottom, 12)
+                        
+                        // Bottom Left: Placeholder Text
+                        HStack {
+                            Text("Upload media for the post")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 12)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        // Enhanced Liquid Glass Effect
+                        ZStack {
+                            // Base glass material
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(.ultraThinMaterial)
+                            
+                            // Gradient overlay for depth (adaptive)
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: colorScheme == .dark ? [
+                                            Color.white.opacity(0.12),
+                                            Color.white.opacity(0.06)
+                                        ] : [
+                                            Color.white.opacity(0.1),
+                                            Color.white.opacity(0.05)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                            
+                            // Blue border with gradient (adaptive)
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: colorScheme == .dark ? [
+                                            Color.blue.opacity(0.8),
+                                            Color.blue.opacity(0.5),
+                                            Color.blue.opacity(0.4)
+                                        ] : [
+                                            Color.blue.opacity(0.7),
+                                            Color.blue.opacity(0.4),
+                                            Color.blue.opacity(0.3)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                        }
+                        .shadow(color: colorScheme == .dark ? Color.black.opacity(0.3) : Color.black.opacity(0.15), radius: 15, x: 0, y: 8)
+                        .shadow(color: Color.blue.opacity(0.1), radius: 5, x: 0, y: 2)
+                    )
                 }
                 .onChange(of: selectedMedia) { newItems in
                     print("[DEBUG] PhotosPicker selection changed. New items count: \(newItems.count)")
                     Task { await loadMediaData(from: newItems) }
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(Array(mediaData.enumerated()), id: \.offset) { element in
-                            let idx = element.offset
-                            let item = element.element
-                            if item.type == "video" {
-                                Image(systemName: "video.fill")
-                                    .resizable().aspectRatio(contentMode: .fit)
-                                    .frame(width: 80, height: 80)
-                                    .foregroundColor(.accentColor)
-                            } else if let uiImage = UIImage(data: item.data) {
-                                Image(uiImage: uiImage)
-                                    .resizable().aspectRatio(contentMode: .fill)
-                                    .frame(width: 80, height: 80)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                        }
-                    }
-                }
+                
+                // Title Input Field
                 TextField("Title", text: $title)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                    .foregroundColor(.primary)
+                
+                // Description Input Field
                 TextField("Description", text: $description)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                    .foregroundColor(.primary)
+                
+                // Tags Input Field
                 TextField("Tags (comma separated)", text: $tags)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                    .foregroundColor(.primary)
+                
                 if let postError = postError {
                     Text(postError).foregroundColor(.red).font(.caption)
                 }
@@ -510,14 +642,28 @@ struct CreateSelfPostSheet: View {
                 Spacer()
             }
             .padding()
+            .background(Color(UIColor.systemBackground))
             .navigationTitle("Create Post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(action: { dismiss() }) {
+                        Text("Cancel")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .frame(minWidth: 60)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(colorScheme == .dark ? Color.white.opacity(0.15) : Color.secondary.opacity(0.1))
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Post") {
+                    Button(action: {
                         Task {
                             print("[DEBUG] Post button clicked. Starting post flow...")
                             isPosting = true
@@ -609,7 +755,21 @@ struct CreateSelfPostSheet: View {
                                 print("[DEBUG] [Post] Failed to create post.")
                             }
                         }
-                    }.disabled(title.isEmpty || mediaData.isEmpty || isPosting)
+                    }) {
+                        Text("Post")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor((title.isEmpty || mediaData.isEmpty || isPosting) ? (colorScheme == .dark ? Color.white.opacity(0.5) : Color.secondary.opacity(0.6)) : .primary)
+                            .frame(minWidth: 60)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(colorScheme == .dark ? Color.white.opacity(0.15) : Color.secondary.opacity(0.1))
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(title.isEmpty || mediaData.isEmpty || isPosting)
                 }
             }
         }
@@ -764,7 +924,7 @@ extension ProfileView {
         ZStack {
             Circle()
                 .fill(Color(.systemBackground))
-                .frame(width: 110, height: 110)
+                .frame(width: 105, height: 105)
             if let urlString = user.profileImageUrl, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
                     if let image = phase.image {
