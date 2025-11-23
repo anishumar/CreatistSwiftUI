@@ -51,6 +51,8 @@ struct MainAppContentView: View {
                     isLoggedIn = true
                     // Start token monitoring when user is logged in
                     TokenMonitor.shared.startMonitoring()
+                    // Check if location should be updated (24 hours passed)
+                    await LocationManager.shared.updateLocationIfNeeded()
                 }
                 isLoading = false
             }
@@ -59,6 +61,10 @@ struct MainAppContentView: View {
             if newValue {
                 // Start monitoring when user logs in
                 TokenMonitor.shared.startMonitoring()
+                // Check if location should be updated (24 hours passed)
+                Task {
+                    await LocationManager.shared.updateLocationIfNeeded()
+                }
             } else {
                 // Stop monitoring when user logs out
                 TokenMonitor.shared.stopMonitoring()

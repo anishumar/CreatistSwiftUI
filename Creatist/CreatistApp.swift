@@ -26,6 +26,10 @@ struct CreatistApp: App {
                     // Restart token monitoring when app becomes active
                     if KeychainHelper.get("accessToken") != nil {
                         TokenMonitor.shared.startMonitoring()
+                        // Check if location should be updated (24 hours passed)
+                        Task {
+                            await LocationManager.shared.updateLocationIfNeeded()
+                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
