@@ -65,13 +65,24 @@ struct FeedView: View {
                                         ScrollView {
                                             VStack(alignment: .leading, spacing: 24) {
                                                 // Selected post detail at the top
-                                                PostCellView(post: post)
+                                                PostCellView(
+                                                    post: post,
+                                                    onLikeStatusChanged: { postId, isLiked, likeCount in
+                                                        updatePostLikeStatus(postId: postId, isLiked: isLiked, likeCount: likeCount)
+                                                    }
+                                                )
                                                     .padding(.bottom, 16)
                                                 // All trending posts below, with the selected post first, then the rest
                                                 let orderedPosts = [post] + posts.filter { $0.id != post.id }
-                                                ForEach(orderedPosts, id: \.id) { trendingPost in
+                                                ForEach(orderedPosts.indices, id: \.self) { idx in
+                                                    let trendingPost = orderedPosts[idx]
                                                     if trendingPost.id != post.id {
-                                                        PostCellView(post: trendingPost)
+                                                        PostCellView(
+                                                            post: trendingPost,
+                                                            onLikeStatusChanged: { postId, isLiked, likeCount in
+                                                                updatePostLikeStatus(postId: postId, isLiked: isLiked, likeCount: likeCount)
+                                                            }
+                                                        )
                                                             .padding(.vertical, 8)
                                                     }
                                                 }
@@ -91,10 +102,15 @@ struct FeedView: View {
                     } else {
                         VStack(spacing: 0) {
                             List {
-                                ForEach(posts, id: \.id) { post in
-                                    PostCellView(post: post)
+                                ForEach(posts.indices, id: \.self) { index in
+                                    PostCellView(
+                                        post: posts[index],
+                                        onLikeStatusChanged: { postId, isLiked, likeCount in
+                                            updatePostLikeStatus(postId: postId, isLiked: isLiked, likeCount: likeCount)
+                                        }
+                                    )
                                     .onAppear {
-                                        checkIfShouldLoadMore(post: post)
+                                        checkIfShouldLoadMore(post: posts[index])
                                     }
                                 }
                                 if isLoadingMore {
@@ -183,11 +199,29 @@ struct FeedView: View {
             loadMorePosts()
         }
     }
+    
+    func updatePostLikeStatus(postId: UUID, isLiked: Bool, likeCount: Int) {
+        // Update the post in the posts array
+        if let postIndex = posts.firstIndex(where: { $0.id == postId }) {
+            posts[postIndex] = posts[postIndex].withUpdatedLikeStatus(isLiked: isLiked, likeCount: likeCount)
+            // Update cache
+            let feedType: FeedType = selectedSegment == 0 ? .trending : .following
+            Task { @MainActor in
+                cacheManager.updatePostLikeStatus(
+                    postId: postId,
+                    isLiked: isLiked,
+                    likeCount: likeCount,
+                    for: feedType
+                )
+            }
+        }
+    }
 
 }
 
 struct PostCellView: View {
     let post: PostWithDetails
+    var onLikeStatusChanged: ((UUID, Bool, Int) -> Void)? = nil
     @StateObject private var cacheManager = CacheManager.shared
     @State private var author: User? = nil
     @State private var collaborators: [User] = []
@@ -230,7 +264,7 @@ struct PostCellView: View {
                             }
                         }
                     }
-                    // Names together
+                   
                     let names = post.collaborators.compactMap { cacheManager.getUser($0.userId)?.name }.joined(separator: ", ")
                     if !names.isEmpty {
                         Text(names)
@@ -289,16 +323,20 @@ struct PostCellView: View {
                 Button(action: {
                     Task {
                         if isLiked {
-                            let success = await Creatist.shared.unlikePost(postId: post.id)
-                            if success {
-                                isLiked = false
-                                likeCount = max(0, likeCount - 1)
+                            if let response = await Creatist.shared.unlikePost(postId: post.id) {
+                                await MainActor.run {
+                                    isLiked = response.isLikedByUser
+                                    likeCount = response.likeCount
+                                    onLikeStatusChanged?(post.id, response.isLikedByUser, response.likeCount)
+                                }
                             }
                         } else {
-                            let success = await Creatist.shared.likePost(postId: post.id)
-                            if success {
-                                isLiked = true
-                                likeCount += 1
+                            if let response = await Creatist.shared.likePost(postId: post.id) {
+                                await MainActor.run {
+                                    isLiked = response.isLikedByUser
+                                    likeCount = response.likeCount
+                                    onLikeStatusChanged?(post.id, response.isLikedByUser, response.likeCount)
+                                }
                             }
                         }
                     }
@@ -363,8 +401,14 @@ struct PostCellView: View {
                     fetchUser(id)
                 }
             }
-            // Initialize like state
+            // Initialize like state from backend
             likeCount = post.likeCount
+            // Initialize isLiked from backend data if available, otherwise default to false
+            if let likedByUser = post.isLikedByUser {
+                isLiked = likedByUser
+            } else {
+                isLiked = false
+            }
         }
         .sheet(isPresented: $showComments) {
             NavigationView {

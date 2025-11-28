@@ -416,6 +416,8 @@ struct SettingsSheet: View {
     @State private var showAbout = false
     @State private var showHelp = false
     @State private var showContact = false
+    @State private var selectedEnvironment: AppEnvironment = EnvironmentConfig.shared.currentEnvironment
+    @State private var environmentInfoMessage: String? = nil
     var body: some View {
         NavigationView {
             List {
@@ -482,6 +484,25 @@ struct SettingsSheet: View {
                         }
                     }
                 }
+                Section(header: Text("API Environment").foregroundColor(Color.secondary)) {
+                    Picker("Environment", selection: $selectedEnvironment) {
+                        ForEach(AppEnvironment.allCases, id: \.self) { environment in
+                            Text(environment.displayName).tag(environment)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    .onChange(of: selectedEnvironment) { newValue in
+                        EnvironmentConfig.shared.currentEnvironment = newValue
+                        CacheManager.shared.invalidateAllCaches()
+                        environmentInfoMessage = "Current API: \(EnvironmentConfig.shared.apiBaseURL)\nRestart the app to ensure all sessions use this server."
+                    }
+                    
+                    if let message = environmentInfoMessage {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
                 Section(header: Text("Account").foregroundColor(Color.secondary)) {
                     Button(role: .destructive, action: onLogout) {
                         Label {
@@ -519,6 +540,10 @@ struct SettingsSheet: View {
             }
             .sheet(isPresented: $showContact) {
                 ContactUsSheet(isPresented: $showContact)
+            }
+            .onAppear {
+                selectedEnvironment = EnvironmentConfig.shared.currentEnvironment
+                environmentInfoMessage = "Current API: \(EnvironmentConfig.shared.apiBaseURL)"
             }
         }
     }

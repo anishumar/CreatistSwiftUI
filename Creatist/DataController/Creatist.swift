@@ -56,6 +56,10 @@ class Creatist {
                 }
                 
                 await self.fetch()
+                // Invalidate cache on login to ensure fresh data with correct like status
+                await MainActor.run {
+                    CacheManager.shared.onUserLogin()
+                }
                 return .success
             }
             return .failure("Login failed")
@@ -119,6 +123,11 @@ class Creatist {
                 
                 // Fetch user data
                 await self.fetch()
+                
+                // Invalidate cache on login to ensure fresh data with correct like status
+                await MainActor.run {
+                    CacheManager.shared.onUserLogin()
+                }
                 
                 return .success
             } else {
@@ -1582,16 +1591,16 @@ extension Creatist {
     }
 
     // Like a post
-    func likePost(postId: UUID) async -> Bool {
+    func likePost(postId: UUID) async -> LikeResponse? {
         let url = "/posts/\(postId.uuidString)/like"
-        let response: Response? = await NetworkManager.shared.post(url: url, body: nil)
-        return response?.message == "Liked"
+        let response: LikeResponse? = await NetworkManager.shared.post(url: url, body: nil)
+        return response
     }
 
     // Unlike a post
-    func unlikePost(postId: UUID) async -> Bool {
+    func unlikePost(postId: UUID) async -> LikeResponse? {
         let url = "/posts/\(postId.uuidString)/like"
-        return await NetworkManager.shared.delete(url: url, body: nil)
+        return await NetworkManager.shared.deleteWithResponse(url: url, body: nil)
     }
 
     // Add a comment

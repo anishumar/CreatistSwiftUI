@@ -453,6 +453,26 @@ extension CacheManager {
             invalidateCache(for: CacheKeys.followingPosts)
         }
     }
+    
+    // MARK: Update Post Like Status
+    @MainActor
+    func updatePostLikeStatus(postId: UUID, isLiked: Bool, likeCount: Int, for feedType: FeedType) {
+        func update(posts: inout [PostWithDetails]) {
+            if let index = posts.firstIndex(where: { $0.id == postId }) {
+                posts[index] = posts[index].withUpdatedLikeStatus(isLiked: isLiked, likeCount: likeCount)
+            }
+        }
+
+        update(posts: &trendingPostsCache)
+        update(posts: &followingPostsCache)
+
+        for (userId, var posts) in userPostsCache {
+            update(posts: &posts)
+            userPostsCache[userId] = posts
+        }
+
+        saveCachedData()
+    }
 }
 
 // MARK: - Feed Type Enum

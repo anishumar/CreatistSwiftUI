@@ -131,6 +131,10 @@ actor NetworkManager {
         return await request(url: url, method: "PUT", body: body)
     }
 
+    func deleteWithResponse<T: Codable>(url: String, body: Data?) async -> T? {
+        return await request(url: url, method: "DELETE", body: body)
+    }
+
     func delete(url: String, body: Data?) async -> Bool {
         let result: Bool? = await request(url: url, method: "DELETE", body: body)
         return result != nil

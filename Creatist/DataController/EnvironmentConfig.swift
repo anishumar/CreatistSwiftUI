@@ -5,6 +5,17 @@ enum AppEnvironment: String, CaseIterable {
     case staging = "staging"
     case production = "production"
     
+    var displayName: String {
+        switch self {
+        case .development:
+            return "Local (Development)"
+        case .staging:
+            return "Staging"
+        case .production:
+            return "Production"
+        }
+    }
+    
     var apiBaseURL: String {
         switch self {
         case .development:

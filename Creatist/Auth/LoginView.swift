@@ -344,6 +344,7 @@ struct LoginView: View {
                     isLoggedIn = true
                     // Start token monitoring after successful login
                     TokenMonitor.shared.startMonitoring()
+                    // Cache invalidation is handled in Creatist.shared.login()
                 case .failure(let error):
                     errorMessage = error
                 case .requiresVerification:

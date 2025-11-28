@@ -1332,6 +1332,7 @@ struct PostWithDetails: Identifiable, Codable {
     let viewCount: Int
     let authorName: String?
     let topComments: [PostComment]
+    let isLikedByUser: Bool?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -1352,6 +1353,32 @@ struct PostWithDetails: Identifiable, Codable {
         case viewCount = "view_count"
         case authorName = "author_name"
         case topComments = "top_comments"
+        case isLikedByUser = "is_liked_by_user"
+    }
+    
+    // Helper method to create a copy with updated like status
+    func withUpdatedLikeStatus(isLiked: Bool, likeCount: Int) -> PostWithDetails {
+        return PostWithDetails(
+            id: self.id,
+            userId: self.userId,
+            caption: self.caption,
+            isCollaborative: self.isCollaborative,
+            status: self.status,
+            visibility: self.visibility,
+            sharedFromPostId: self.sharedFromPostId,
+            createdAt: self.createdAt,
+            updatedAt: self.updatedAt,
+            deletedAt: self.deletedAt,
+            media: self.media,
+            tags: self.tags,
+            collaborators: self.collaborators,
+            likeCount: likeCount,
+            commentCount: self.commentCount,
+            viewCount: self.viewCount,
+            authorName: self.authorName,
+            topComments: self.topComments,
+            isLikedByUser: isLiked
+        )
     }
 }
 
@@ -1426,4 +1453,18 @@ struct PostHashtag: Codable {
 struct PaginatedPosts: Codable {
     let posts: [PostWithDetails]
     let nextCursor: String?
+} 
+
+struct LikeResponse: Codable {
+    let message: String
+    let postId: UUID
+    let likeCount: Int
+    let isLikedByUser: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case message
+        case postId = "post_id"
+        case likeCount = "like_count"
+        case isLikedByUser = "is_liked_by_user"
+    }
 } 
