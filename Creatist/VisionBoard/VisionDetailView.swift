@@ -273,9 +273,16 @@ struct VisionDetailView: View {
         Task {
             remindLoading[assignment.userId] = true
             remindSuccess[assignment.userId] = false
-            let _ = await Creatist.shared.remindUser(assignment: assignment)
+            let success = await Creatist.shared.remindUser(assignment: assignment)
             remindLoading[assignment.userId] = false
-            remindSuccess[assignment.userId] = true
+            remindSuccess[assignment.userId] = success
+            // Reset success indicator after 2 seconds
+            if success {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await MainActor.run {
+                    remindSuccess[assignment.userId] = false
+                }
+            }
         }
     }
     
