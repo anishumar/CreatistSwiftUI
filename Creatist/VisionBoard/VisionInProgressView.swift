@@ -183,7 +183,6 @@ struct VisionInProgressView: View {
                                     .foregroundColor(.accentColor)
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 6)
-                                    .background(Capsule().fill(Color(.systemGray5)))
                             }
                             .buttonStyle(.plain)
                             .disabled(!isVisionBoardOwner)
@@ -646,6 +645,7 @@ struct CreatePostSheet: View {
     @State private var description: String = ""
     @State private var tags: String = ""
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) var colorScheme
     @State private var isPosting = false
     @State private var postError: String? = nil
     var collaborators: [UUID] {
@@ -656,68 +656,127 @@ struct CreatePostSheet: View {
     }
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Collaborators
-                    if collaborators.count > 1 {
-                        HStack(spacing: 12) {
-                            ForEach(collaborators, id: \.self) { userId in
-                                Circle().fill(Color.accentColor.opacity(0.2)).frame(width: 40, height: 40)
-                                // TODO: Replace with user image if available
-                                Text(userId.uuidString.prefix(6)).font(.caption)
-                            }
+            VStack(alignment: .leading, spacing: 16) {
+                // Collaborators
+                if collaborators.count > 1 {
+                    HStack(spacing: 12) {
+                        ForEach(collaborators, id: \.self) { userId in
+                            Circle().fill(Color.accentColor.opacity(0.2)).frame(width: 40, height: 40)
+                            // TODO: Replace with user image if available
+                            Text(userId.uuidString.prefix(6)).font(.caption)
                         }
-                        Text("Collaborators").font(.caption).foregroundColor(.gray)
                     }
-                    // Media preview
+                    Text("Collaborators").font(.caption).foregroundColor(.gray)
+                }
+                
+                // Media Preview - Automatically selected from drafts
+                if !mediaUrls.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            ForEach(mediaUrls, id: \.self) { url in
-                                AsyncImage(url: URL(string: url)) { phase in
-                                    if let image = phase.image {
-                                        image.resizable().aspectRatio(contentMode: .fill)
-                                    } else if phase.error != nil {
-                                        Image(systemName: "doc").resizable().aspectRatio(contentMode: .fit).foregroundColor(Color(.tertiaryLabel))
-                                    } else {
-                                        ProgressView()
+                            ForEach(Array(mediaUrls.enumerated()), id: \.offset) { element in
+                                let idx = element.offset
+                                let url = element.element
+                                let draft = drafts[idx]
+                                
+                                if draft.mediaType == "video" {
+                                    Image(systemName: "video.fill")
+                                        .resizable().aspectRatio(contentMode: .fit)
+                                        .frame(width: 160, height: 160)
+                                        .foregroundColor(.accentColor)
+                                } else {
+                                    AsyncImage(url: URL(string: url)) { phase in
+                                        if let image = phase.image {
+                                            image.resizable().aspectRatio(contentMode: .fill)
+                                        } else if phase.error != nil {
+                                            Image(systemName: "photo")
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fit)
+                                                .foregroundColor(Color(.tertiaryLabel))
+                                        } else {
+                                            ProgressView()
+                                        }
                                     }
+                                    .frame(width: 160, height: 160)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
-                                .frame(width: 80, height: 80)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                         }
-                    }
-                    // Title
-                    TextField("Title", text: $title)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    // Description
-                    TextField("Description", text: $description)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    // Genres (from vision board)
-                    if !genres.isEmpty {
-                        Text("Genres: " + genres.joined(separator: ", "))
-                            .font(.subheadline).foregroundColor(.secondary)
-                    }
-                    // Tags
-                    TextField("Tags (comma separated)", text: $tags)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    if let postError = postError {
-                        Text(postError).foregroundColor(.red).font(.caption)
-                    }
-                    if isPosting {
-                        HStack { Spacer(); ProgressView(); Spacer() }
+                        .padding(.vertical, 8)
                     }
                 }
-                .padding()
+                
+                // Title Input Field
+                TextField("Title", text: $title)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                    .foregroundColor(.primary)
+                
+                // Description Input Field
+                TextField("Description", text: $description)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                    .foregroundColor(.primary)
+                
+                // Genres (from vision board)
+                if !genres.isEmpty {
+                    Text("Genres: " + genres.joined(separator: ", "))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                
+                // Tags Input Field
+                TextField("Tags (comma separated)", text: $tags)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                    .foregroundColor(.primary)
+                
+                if let postError = postError {
+                    Text(postError).foregroundColor(.red).font(.caption)
+                }
+                if isPosting {
+                    HStack { Spacer(); 
+                        SkeletonView(width: 20, height: 20, cornerRadius: 10)
+                        Spacer() 
+                    }
+                }
+                Spacer()
             }
+            .padding()
+            .background(Color(UIColor.systemBackground))
             .navigationTitle("Create Post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(action: { dismiss() }) {
+                        Text("Cancel")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .frame(minWidth: 60)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Post") {
+                    Button(action: {
                         Task {
                             isPosting = true
                             postError = nil
@@ -789,7 +848,17 @@ struct CreatePostSheet: View {
                                 isPosting = false
                             }
                         }
-                    }.disabled(title.isEmpty || mediaUrls.isEmpty || isPosting)
+                    }) {
+                        Text("Post")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor((title.isEmpty || mediaUrls.isEmpty || isPosting) ? Color.white.opacity(0.6) : Color.white)
+                            .frame(minWidth: 60)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                         
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(title.isEmpty || mediaUrls.isEmpty || isPosting)
                 }
             }
         }

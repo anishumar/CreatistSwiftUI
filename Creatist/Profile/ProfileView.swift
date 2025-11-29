@@ -463,24 +463,24 @@ struct CreateSelfPostSheet: View {
             VStack(alignment: .leading, spacing: 16) {
                 // Media Preview
                 if !mediaData.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(Array(mediaData.enumerated()), id: \.offset) { element in
-                                let idx = element.offset
-                                let item = element.element
-                                if item.type == "video" {
-                                    Image(systemName: "video.fill")
-                                        .resizable().aspectRatio(contentMode: .fit)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(Array(mediaData.enumerated()), id: \.offset) { element in
+                            let idx = element.offset
+                            let item = element.element
+                            if item.type == "video" {
+                                Image(systemName: "video.fill")
+                                    .resizable().aspectRatio(contentMode: .fit)
                                         .frame(width: 160, height: 160)
-                                        .foregroundColor(.accentColor)
-                                } else if let uiImage = UIImage(data: item.data) {
-                                    Image(uiImage: uiImage)
-                                        .resizable().aspectRatio(contentMode: .fill)
+                                    .foregroundColor(.accentColor)
+                            } else if let uiImage = UIImage(data: item.data) {
+                                Image(uiImage: uiImage)
+                                    .resizable().aspectRatio(contentMode: .fill)
                                         .frame(width: 160, height: 160)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                }
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                         }
+                    }
                         .padding(.vertical, 8)
                     }
                 }
@@ -492,17 +492,17 @@ struct CreateSelfPostSheet: View {
                         HStack(spacing: 8) {
                             Image(systemName: "photo.on.rectangle.angled")
                                 .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(colorScheme == .dark ? Color.blue.opacity(0.8) : Color.blue.opacity(0.7))
+                                .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.5) : Color.secondary.opacity(0.6))
                             Text("Upload Media")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(colorScheme == .dark ? Color.blue.opacity(0.6) : Color.blue.opacity(0.7))
+                                .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.5) : Color.primary.opacity(0.6))
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
                                 .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                                .foregroundColor(colorScheme == .dark ? Color.blue.opacity(0.5) : Color.blue.opacity(0.4))
+                                .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.5) : Color.secondary.opacity(0.6))
                         )
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
@@ -521,11 +521,11 @@ struct CreateSelfPostSheet: View {
                         .frame(height: 140)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.03))
+                                .fill(colorScheme == .dark ? Color.gray.opacity(0.08) : Color.black.opacity(0.03))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
-                                        .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.3) : Color.secondary.opacity(0.4))
+                                        .foregroundColor(colorScheme == .dark ? Color.secondary.opacity(0.3) : Color.white.opacity(0.4))
                                 )
                         )
                         .padding(.horizontal, 12)
@@ -568,25 +568,10 @@ struct CreateSelfPostSheet: View {
                             
                             // Blue border with gradient (adaptive)
                             RoundedRectangle(cornerRadius: 16)
-                                .strokeBorder(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: colorScheme == .dark ? [
-                                            Color.blue.opacity(0.8),
-                                            Color.blue.opacity(0.5),
-                                            Color.blue.opacity(0.4)
-                                        ] : [
-                                            Color.blue.opacity(0.7),
-                                            Color.blue.opacity(0.4),
-                                            Color.blue.opacity(0.3)
-                                        ]),
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 1.5
-                                )
+                                .stroke(colorScheme == .dark ? Color.white.opacity(0.2) : Color.secondary.opacity(0.3), lineWidth: 1)
+                            
                         }
-                        .shadow(color: colorScheme == .dark ? Color.black.opacity(0.3) : Color.black.opacity(0.15), radius: 15, x: 0, y: 8)
-                        .shadow(color: Color.blue.opacity(0.1), radius: 5, x: 0, y: 2)
+                        .shadow(color: colorScheme == .dark ? Color.black.opacity(0.3) : Color.black.opacity(0.15), radius: 5, x: 0, y: 8)
                     )
                 }
                 .onChange(of: selectedMedia) { newItems in
@@ -654,11 +639,6 @@ struct CreateSelfPostSheet: View {
                             .frame(minWidth: 60)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(colorScheme == .dark ? Color.white.opacity(0.15) : Color.secondary.opacity(0.1))
-                            )
-                            .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -758,15 +738,17 @@ struct CreateSelfPostSheet: View {
                     }) {
                         Text("Post")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor((title.isEmpty || mediaData.isEmpty || isPosting) ? (colorScheme == .dark ? Color.white.opacity(0.5) : Color.secondary.opacity(0.6)) : .primary)
+                            .foregroundColor(
+                                (title.isEmpty || mediaData.isEmpty || isPosting)
+                                ? (colorScheme == .dark
+                                   ? Color.white.opacity(0.15)
+                                   : Color.secondary.opacity(0.4))
+                                : Color.primary
+                            )
                             .frame(minWidth: 60)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(colorScheme == .dark ? Color.white.opacity(0.15) : Color.secondary.opacity(0.1))
-                            )
-                            .contentShape(Rectangle())
+                            
                     }
                     .buttonStyle(PlainButtonStyle())
                     .disabled(title.isEmpty || mediaData.isEmpty || isPosting)
