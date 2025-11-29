@@ -1301,11 +1301,13 @@ extension Creatist {
         }
     }
 
-    // Remind a user (simulate network delay for now)
+    // Remind a user by resending invitation
     func remindUser(assignment: GenreAssignment) async -> Bool {
-        // TODO: Call backend notification endpoint to resend invite
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // Simulate network delay
-        return true
+        let url = "/v1/visionboard/assignments/\(assignment.id.uuidString.lowercased())/resend-invitation"
+        if let response: ResendInvitationResponse = await NetworkManager.shared.post(url: url, body: nil) {
+            return response.status == "success"
+        }
+        return false
     }
 
     // Add assignment and invite a user
