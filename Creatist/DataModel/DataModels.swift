@@ -1260,6 +1260,13 @@ struct GenreWithAssignmentsResponse: Codable {
     let genre: GenreWithAssignments
 }
 
+// Response wrapper for resend invitation
+struct ResendInvitationResponse: Codable {
+    let message: String
+    let status: String
+    let invitation: Invitation
+}
+
 // MARK: - UI Helper Models (moved from VisionBoardView.swift)
 
 struct IdentifiableUUID: Identifiable, Equatable {
