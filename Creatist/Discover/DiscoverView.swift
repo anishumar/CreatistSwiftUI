@@ -4,6 +4,8 @@ struct DiscoverView: View {
     @State private var searchText: String = ""
     @State private var searchResults: [User] = []
     @State private var isSearching: Bool = false
+    @State private var followingUserIds: Set<UUID> = []
+    @State private var hasLoadedFollowing: Bool = false
     @StateObject private var viewModel = UserListViewModel()
     let genres = UserGenre.allCases
     let columns = [GridItem(.flexible()), GridItem(.flexible())]
@@ -45,7 +47,16 @@ struct DiscoverView: View {
                         } else {
                             ForEach(searchResults, id: \.id) { user in
                                 NavigationLink(destination: UserProfileView(userId: user.id, viewModel: viewModel)) {
-                                    UserSearchResultRow(user: user)
+                                    UserSearchResultRow(
+                                        user: user,
+                                        followingUserIds: $followingUserIds,
+                                        onFollowStatusChanged: { isFollowing, userId in
+                                            // Refresh from API after follow/unfollow to ensure consistency
+                                            Task { @MainActor in
+                                                await refreshFollowingList()
+                                            }
+                                        }
+                                    )
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }
@@ -81,6 +92,13 @@ struct DiscoverView: View {
                     isSearching = false
                 }
             }
+            .onAppear {
+                // Refresh following list when view appears (e.g., when returning from profile view)
+                // This ensures search results reflect the latest follow/unfollow status
+                Task { @MainActor in
+                    await refreshFollowingList()
+                }
+            }
             .background(
                 NavigationLink(
                     destination: Group {
@@ -102,17 +120,53 @@ struct DiscoverView: View {
         guard !query.isEmpty else { return }
         
         print("🔍 DiscoverView: Starting search for '\(query)'")
-        isSearching = true
+        await MainActor.run {
+            isSearching = true
+        }
         searchResults = await Creatist.shared.searchUsers(query: query)
         print("🔍 DiscoverView: Search completed, found \(searchResults.count) users")
-        isSearching = false
+        
+        // Always refresh following list when search results are loaded to ensure latest state
+        await refreshFollowingList()
+        
+        await MainActor.run {
+            isSearching = false
+        }
+    }
+    
+    @MainActor
+    private func refreshFollowingList() async {
+        guard let currentUserId = Creatist.shared.user?.id.uuidString else {
+            return
+        }
+        
+        print("🔄 DiscoverView: Refreshing following list from API...")
+        let followingList = await Creatist.shared.fetchFollowing(for: currentUserId)
+        let newFollowingIds = Set(followingList.map { $0.id })
+        
+        // Always assign new Set instance to ensure SwiftUI detects the change
+        // This ensures the UI updates even if the contents are the same
+        followingUserIds = newFollowingIds
+        
+        hasLoadedFollowing = true
     }
 }
 
 struct UserSearchResultRow: View {
     let user: User
-    @State private var isFollowing: Bool = false
+    @Binding var followingUserIds: Set<UUID>
+    let onFollowStatusChanged: (Bool, UUID) -> Void
     @State private var isLoadingFollow: Bool = false
+    @State private var localIsFollowing: Bool = false
+    
+    private var isOwnProfile: Bool {
+        user.id == Creatist.shared.user?.id
+    }
+    
+    // Use local state that syncs with the binding
+    private var isFollowing: Bool {
+        localIsFollowing
+    }
     
     var body: some View {
         HStack(spacing: 12) {
@@ -176,44 +230,75 @@ struct UserSearchResultRow: View {
             
             Spacer()
             
-            // Follow button
-            Button(action: {
-                Task {
-                    isLoadingFollow = true
-                    if isFollowing {
-                        let success = await Creatist.shared.unfollowUser(userId: user.id.uuidString)
-                        if success {
-                            isFollowing = false
+            // Follow button - only show if not own profile
+            if !isOwnProfile {
+                Button(action: {
+                    Task { @MainActor in
+                        isLoadingFollow = true
+                        let wasFollowing = isFollowing
+                        let newState = !wasFollowing
+                        
+                        // Update local state immediately for instant UI feedback
+                        localIsFollowing = newState
+                        
+                        // Update the binding immediately for instant UI feedback
+                        var updatedSet = followingUserIds
+                        if wasFollowing {
+                            updatedSet.remove(user.id)
+                        } else {
+                            updatedSet.insert(user.id)
                         }
-                    } else {
-                        let success = await Creatist.shared.followUser(userId: user.id.uuidString)
+                        followingUserIds = Set(updatedSet) // Force new instance
+                        
+                        // Call API
+                        let success: Bool
+                        if wasFollowing {
+                            success = await Creatist.shared.unfollowUser(userId: user.id.uuidString)
+                        } else {
+                            success = await Creatist.shared.followUser(userId: user.id.uuidString)
+                        }
+                        
                         if success {
-                            isFollowing = true
+                            // Ensure local state matches the binding after API call
+                            localIsFollowing = followingUserIds.contains(user.id)
+                            // Notify parent to refresh from API to ensure consistency
+                            onFollowStatusChanged(newState, user.id)
+                        } else {
+                            // Revert optimistic update on failure
+                            localIsFollowing = wasFollowing
+                            var revertedSet = followingUserIds
+                            if wasFollowing {
+                                revertedSet.insert(user.id)
+                            } else {
+                                revertedSet.remove(user.id)
+                            }
+                            followingUserIds = Set(revertedSet)
+                        }
+                        
+                        isLoadingFollow = false
+                    }
+                }) {
+                    Group {
+                        if isLoadingFollow {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .foregroundColor(.white)
+                        } else {
+                            Text(isFollowing ? "Unfollow" : "Follow")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(isFollowing ? .secondary : .white)
                         }
                     }
-                    isLoadingFollow = false
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(isFollowing ? Color(.systemGray5) : Color.accentColor)
+                    )
                 }
-            }) {
-                Group {
-                    if isLoadingFollow {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                            .foregroundColor(.white)
-                    } else {
-                        Text(isFollowing ? "Following" : "Follow")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(isFollowing ? .secondary : .white)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(isFollowing ? Color(.systemGray5) : Color.accentColor)
-                )
+                .disabled(isLoadingFollow)
             }
-            .disabled(isLoadingFollow)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
@@ -221,8 +306,24 @@ struct UserSearchResultRow: View {
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
         .onAppear {
-            // Initialize follow state based on user's isFollowing property
-            isFollowing = user.isFollowing ?? false
+            // Initialize local state from binding
+            localIsFollowing = followingUserIds.contains(user.id)
+        }
+        .onChange(of: followingUserIds.count) { _ in
+            // Sync local state when followingUserIds changes (e.g., from API refresh or other actions)
+            let newFollowingState = followingUserIds.contains(user.id)
+            if newFollowingState != localIsFollowing {
+                localIsFollowing = newFollowingState
+            }
+        }
+        .task(id: followingUserIds.count) {
+            // Also watch for Set changes using task modifier
+            let newFollowingState = followingUserIds.contains(user.id)
+            if newFollowingState != localIsFollowing {
+                await MainActor.run {
+                    localIsFollowing = newFollowingState
+                }
+            }
         }
     }
 }

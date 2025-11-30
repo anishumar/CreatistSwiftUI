@@ -135,6 +135,21 @@ actor NetworkManager {
         let result: Bool? = await request(url: url, method: "DELETE", body: body)
         return result != nil
     }
+    
+    // Delete method that properly decodes the Response object to check for success
+    func deleteWithResponse(url: String, body: Data?) async -> Bool {
+        log("🌐 NetworkManager: DELETE \(url)")
+        let response: Response? = await request(url: url, method: "DELETE", body: body)
+        let success = response?.message == "success"
+        
+        if success {
+            log("🌐 NetworkManager: DELETE \(url) - SUCCESS")
+        } else {
+            log("🌐 NetworkManager: DELETE \(url) - FAILED", level: .error)
+        }
+        
+        return success
+    }
 
     func patch<T: Codable>(url: String, body: Data?) async -> T? {
         return await request(url: url, method: "PATCH", body: body)
