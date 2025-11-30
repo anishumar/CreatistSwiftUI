@@ -121,16 +121,32 @@ struct PostCellView: View {
                 }) {
                     Label("\(likeCount)", systemImage: isLiked ? "heart.fill" : "heart")
                         .foregroundColor(isLiked ? .red : .primary)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 4)
                 }
-                Button(action: { showComments = true }) {
+                .buttonStyle(PlainButtonStyle())
+                
+                Button(action: { 
+                    showComments = true 
+                }) {
                     Label("\(post.commentCount)", systemImage: "bubble.right")
                         .foregroundColor(.primary)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 4)
                 }
-                Button(action: { showShareSheet = true }) {
+                .buttonStyle(PlainButtonStyle())
+                
+                Button(action: { 
+                    showShareSheet = true 
+                }) {
                     Image(systemName: "square.and.arrow.up")
                         .foregroundColor(.primary)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 4)
                 }
-            }.font(.subheadline)
+                .buttonStyle(PlainButtonStyle())
+            }
+            .font(.subheadline)
             // 4. Title
             if let caption = post.caption {
                 Text(caption).font(.headline)
