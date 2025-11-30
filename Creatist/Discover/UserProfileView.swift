@@ -434,12 +434,12 @@ extension UserProfileView {
                     if let post = selectedPost {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 8) {
-                                PostCellView(post: post)
+                                PostCellView(post: post, viewModel: viewModel)
                                     .padding(.bottom, 16)
                                 let orderedPosts = [post] + userPosts.filter { $0.id != post.id }
                                 ForEach(orderedPosts, id: \.id) { detailPost in
                                     if detailPost.id != post.id {
-                                        PostCellView(post: detailPost)
+                                        PostCellView(post: detailPost, viewModel: viewModel)
                                             .padding(.vertical, 8)
                                     }
                                 }

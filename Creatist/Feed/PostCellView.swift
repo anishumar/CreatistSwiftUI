@@ -4,6 +4,7 @@ import AVKit
 struct PostCellView: View {
     let post: PostWithDetails
     var onUpdate: ((PostWithDetails) -> Void)? = nil
+    var viewModel: UserListViewModel? = nil
     @StateObject private var cacheManager = CacheManager.shared
     @State private var author: User? = nil
     @State private var collaborators: [User] = []
@@ -11,6 +12,8 @@ struct PostCellView: View {
     @State private var likeCount: Int = 0
     @State private var showComments: Bool = false
     @State private var showShareSheet = false
+    @State private var selectedUserId: UUID? = nil
+    @State private var showCollaboratorPicker = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -18,9 +21,12 @@ struct PostCellView: View {
             if post.isCollaborative, !post.collaborators.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: -6) {
-                        ForEach(post.collaborators, id: \.userId) { collaborator in
-                            if let user = cacheManager.getUser(collaborator.userId) {
-                                if let url = user.profileImageUrl, let imgUrl = URL(string: url) {
+                        // Show main author first if available
+                        if let author = author {
+                            Button(action: {
+                                showCollaboratorPicker = true
+                            }) {
+                                if let url = author.profileImageUrl, let imgUrl = URL(string: url) {
                                     AsyncImage(url: imgUrl) { phase in
                                         if let image = phase.image {
                                             image.resizable().scaledToFill()
@@ -36,36 +42,85 @@ struct PostCellView: View {
                                 } else {
                                     Image(systemName: "person.crop.circle.fill").resizable().scaledToFill().frame(width: 36, height: 36).clipShape(Circle()).foregroundColor(.gray)
                                 }
-                            } else {
-                                Color.gray.frame(width: 36, height: 36).clipShape(Circle())
-                                    .onAppear { fetchUser(collaborator.userId) }
                             }
+                            .buttonStyle(PlainButtonStyle())
+                            .contentShape(Circle())
+                            .allowsHitTesting(true)
+                        }
+                        // Show collaborators
+                        ForEach(post.collaborators, id: \.userId) { collaborator in
+                            Button(action: {
+                                showCollaboratorPicker = true
+                            }) {
+                                if let user = cacheManager.getUser(collaborator.userId) {
+                                    if let url = user.profileImageUrl, let imgUrl = URL(string: url) {
+                                        AsyncImage(url: imgUrl) { phase in
+                                            if let image = phase.image {
+                                                image.resizable().scaledToFill()
+                                            } else if phase.error != nil {
+                                                Image(systemName: "person.crop.circle.fill").resizable().scaledToFill().foregroundColor(.gray)
+                                            } else {
+                                                ProgressView().frame(width: 36, height: 36)
+                                            }
+                                        }
+                                        .frame(width: 36, height: 36)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                    } else {
+                                        Image(systemName: "person.crop.circle.fill").resizable().scaledToFill().frame(width: 36, height: 36).clipShape(Circle()).foregroundColor(.gray)
+                                    }
+                                } else {
+                                    Color.gray.frame(width: 36, height: 36).clipShape(Circle())
+                                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                        .onAppear { fetchUser(collaborator.userId) }
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .contentShape(Circle())
+                            .allowsHitTesting(true)
                         }
                     }
-                    // Names together
-                    let names = post.collaborators.compactMap { cacheManager.getUser($0.userId)?.name }.joined(separator: ", ")
-                    if !names.isEmpty {
-                        Text(names)
-                            .font(.subheadline).bold()
-                            .foregroundColor(.white)
-                            .lineLimit(2)
-                            .truncationMode(.tail)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 2)
+                    // Names together - make clickable to show picker
+                    let allUsers = ([author].compactMap { $0 } + collaborators).map { $0.name }.joined(separator: ", ")
+                    if !allUsers.isEmpty {
+                        Button(action: {
+                            showCollaboratorPicker = true
+                        }) {
+                            Text(allUsers)
+                                .font(.subheadline).bold()
+                                .foregroundColor(.white)
+                                .lineLimit(2)
+                                .truncationMode(.tail)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 2)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .contentShape(Rectangle())
+                        .allowsHitTesting(true)
                     }
                 }
             } else {
                 HStack(spacing: 8) {
                     if let user = author {
-                        UserImageAndName(user: user)
+                        NavigationLink(destination: UserProfileView(userId: user.id, viewModel: viewModel ?? UserListViewModel())) {
+                            UserImageAndName(user: user)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     } else {
-                        Color.gray.frame(width: 36, height: 36).clipShape(Circle())
-                            .onAppear { fetchUser(post.userId) }
+                        HStack(spacing: 8) {
+                            Color.gray.frame(width: 36, height: 36).clipShape(Circle())
+                            Text("Loading...")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                        }
+                        .onAppear { 
+                            fetchUser(post.userId) 
+                        }
                     }
                 }
             }
-            // 2. Media
+            // 2. Media - not clickable (only profile image/username are clickable)
             if let media = post.media.sorted(by: { $0.order < $1.order }).first {
                 if media.url.lowercased().hasSuffix(".mp4") || media.type == "video" {
                     if let url = URL(string: media.url) {
@@ -181,6 +236,11 @@ struct PostCellView: View {
             
             // Try to get collaborators from cache first
             if post.isCollaborative && !post.collaborators.isEmpty {
+                // Ensure main author is also fetched for collaborative posts
+                if author == nil {
+                    fetchUser(post.userId)
+                }
+                
                 let cachedCollaborators = post.collaborators.compactMap { collaborator in
                     cacheManager.getUser(collaborator.userId)
                 }
@@ -210,6 +270,50 @@ struct PostCellView: View {
                 ShareSheet(activityItems: ["Check out this post on Creatist!"])
             }
         }
+        .confirmationDialog("Select Collaborator", isPresented: $showCollaboratorPicker, titleVisibility: .visible) {
+            // Show main author first
+            if let author = author {
+                Button(author.name) {
+                    // Direct state update - we're already on MainActor in button actions
+                    selectedUserId = author.id
+                }
+            }
+            // Show all collaborators from the post (excluding main author if already shown)
+            ForEach(post.collaborators, id: \.userId) { collaborator in
+                if let user = cacheManager.getUser(collaborator.userId), user.id != author?.id {
+                    Button(user.name) {
+                        // Direct state update - we're already on MainActor in button actions
+                        selectedUserId = user.id
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Choose a collaborator to view their profile")
+        }
+        .background(
+            // NavigationLink always present in view hierarchy for reliable navigation
+            NavigationLink(
+                destination: Group {
+                    if let userId = selectedUserId {
+                        UserProfileView(userId: userId, viewModel: viewModel ?? UserListViewModel())
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: Binding(
+                    get: { selectedUserId != nil },
+                    set: { 
+                        if !$0 { 
+                            selectedUserId = nil 
+                        }
+                    }
+                )
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
     }
     
     func fetchUser(_ userId: UUID) {
