@@ -578,23 +578,37 @@ class Creatist {
     }
     
     func followUser(userId: String) async -> Bool {
-        let response: Response? = await NetworkManager.shared.put(url: "/v1/follow/\(userId)", body: nil)
+        // Convert UUID to lowercase as backend expects lowercase
+        let lowercasedUserId = userId.lowercased()
+        let response: Response? = await NetworkManager.shared.put(url: "/v1/follow/\(lowercasedUserId)", body: nil)
         let success = response?.message == "success"
         
-        // Invalidate following feed cache since following list changed
         if success {
+            print("✅ Creatist: Successfully followed user: \(lowercasedUserId)")
+            // Invalidate following feed cache since following list changed
             CacheManager.shared.invalidateCache(for: .following)
+        } else {
+            print("❌ Creatist: Failed to follow user: \(lowercasedUserId) - response was nil or not success")
         }
         
         return success
     }
     
     func unfollowUser(userId: String) async -> Bool {
-        let success = await NetworkManager.shared.delete(url: "/v1/unfollow/\(userId)", body: nil)
+        // Convert UUID to lowercase as backend expects lowercase
+        let lowercasedUserId = userId.lowercased()
+        print("🔗 Creatist: Attempting to unfollow user: \(lowercasedUserId)")
         
-        // Invalidate following feed cache since following list changed
+        // Use a helper method to properly decode DELETE response
+        // Backend returns JSONResponse with {"message": "success"} on success
+        let success = await NetworkManager.shared.deleteWithResponse(url: "/v1/unfollow/\(lowercasedUserId)", body: nil)
+        
         if success {
+            print("✅ Creatist: Successfully unfollowed user: \(lowercasedUserId)")
+            // Invalidate following feed cache since following list changed
             CacheManager.shared.invalidateCache(for: .following)
+        } else {
+            print("❌ Creatist: Failed to unfollow user: \(lowercasedUserId) - response was nil or not success")
         }
         
         return success
@@ -636,6 +650,16 @@ class Creatist {
         let url = "/v1/followers/\(userId)"
         if let response: FollowersResponse = await NetworkManager.shared.get(url: url) {
             return response.followers
+        }
+        return []
+    }
+    
+    // Fetch following list for any user (all users they follow)
+    func fetchFollowing(for userId: String) async -> [User] {
+        let url = "/v1/following/\(userId.lowercased())"
+        struct FollowingResponse: Codable { let message: String; let following: [User] }
+        if let response: FollowingResponse = await NetworkManager.shared.get(url: url) {
+            return response.following
         }
         return []
     }

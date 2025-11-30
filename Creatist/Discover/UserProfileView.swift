@@ -89,19 +89,35 @@ struct UserProfileView: View {
             }
         }
         .task {
-            // Check if user is already available from viewModel
-            if user == nil {
-                isLoadingUser = true
-                fetchedUser = await Creatist.shared.fetchUserById(userId: userId)
-                isLoadingUser = false
+            // Always refresh user data from backend to get latest follow status
+            isLoadingUser = true
+            
+            // Fetch fresh user data from backend
+            if let freshUser = await Creatist.shared.fetchUserById(userId: userId) {
+                // Check if current user is following this user by fetching following list
+                var updatedUser = freshUser
+                if let currentUserId = Creatist.shared.user?.id.uuidString {
+                    let followingList = await Creatist.shared.fetchFollowing(for: currentUserId)
+                    updatedUser.isFollowing = followingList.contains { $0.id == userId }
+                }
+                
+                await MainActor.run {
+                    fetchedUser = updatedUser
+                    isLoadingUser = false
+                }
+            } else {
+                await MainActor.run {
+                    isLoadingUser = false
+                }
             }
             
-            // Load user data if we have a user
-            if let user = user {
-                followersCount = await Creatist.shared.fetchFollowersCount(for: user.id.uuidString)
-                followingCount = await Creatist.shared.fetchFollowingCount(for: user.id.uuidString)
+            // Load user data if we have a user (use fetchedUser if available, otherwise use user from viewModel)
+            let userToLoad = fetchedUser ?? user
+            if let userToLoad = userToLoad {
+                followersCount = await Creatist.shared.fetchFollowersCount(for: userToLoad.id.uuidString)
+                followingCount = await Creatist.shared.fetchFollowingCount(for: userToLoad.id.uuidString)
                 // Always load posts to get accurate count
-                await loadUserPosts(for: user.id)
+                await loadUserPosts(for: userToLoad.id)
             }
         }
         .onChange(of: selectedSection) { newValue in
@@ -418,12 +434,12 @@ extension UserProfileView {
                     if let post = selectedPost {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 8) {
-                                PostCellView(post: post)
+                                PostCellView(post: post, viewModel: viewModel)
                                     .padding(.bottom, 16)
                                 let orderedPosts = [post] + userPosts.filter { $0.id != post.id }
                                 ForEach(orderedPosts, id: \.id) { detailPost in
                                     if detailPost.id != post.id {
-                                        PostCellView(post: detailPost)
+                                        PostCellView(post: detailPost, viewModel: viewModel)
                                             .padding(.vertical, 8)
                                     }
                                 }
